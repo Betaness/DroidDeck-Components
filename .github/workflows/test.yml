@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Fetch the guest script the packs are measured with
+        uses: actions/checkout@v4
+        with:
+          repository: Droid-Deck/DroidDeck
+          ref: main
+          path: droiddeck
+          persist-credentials: false
+          sparse-checkout: tools/linuxfs/overlay/usr/local/bin/droiddeck-esync
+          sparse-checkout-cone-mode: false
+
+      - name: Install the test tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-yaml zstd >/dev/null
+
+      - name: Run the tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
