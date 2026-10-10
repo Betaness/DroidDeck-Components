@@ -1,0 +1,117 @@
+name: Build emulator from source (SteamDeck, tier 3)
+
+# The emulators that ship no ARM64 Linux binary — PCSX2, Dolphin, Cemu — built on GitHub's ARM
+# runner and published as AppImages to the desktop release. Each is a large build; one at a time.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'dolphin | pcsx2 | cemu'
+        required: true
+        default: 'dolphin'
+      release:
+        description: 'Release tag to publish to (none = keep the AppImage as a run artifact only)'
+        required: true
+        default: 'steamdeck-desktop-r1'
+      cemu_ref:
+        description: 'Cemu commit or branch to build (cemu only; empty = main)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: desktop
+      - name: Toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends git cmake ninja-build build-essential \
+            pkg-config python3 curl file desktop-file-utils libfuse2 \
+            qt6-base-dev qt6-base-private-dev qt6-svg-dev qt6-tools-dev \
+            libgl1-mesa-dev libvulkan-dev libsdl2-dev libx11-dev libxext-dev libwayland-dev \
+            libudev-dev libevdev-dev libasound2-dev libpulse-dev libcurl4-openssl-dev \
+            zlib1g-dev libzstd-dev liblz4-dev libbz2-dev libpng-dev libhidapi-dev \
+            libbluetooth-dev libusb-1.0-0-dev libsystemd-dev gettext
+
+      - name: Fetch linuxdeploy (AppImage packager, aarch64)
+        run: |
+          set -euo pipefail
+          for tool in linuxdeploy linuxdeploy-plugin-qt; do
+            curl -fsSL -o "/usr/local/bin/$tool" \
+              "https://github.com/linuxdeploy/$tool/releases/download/continuous/$tool-aarch64.AppImage"
+            chmod +x "/usr/local/bin/$tool"
+          done
+
+      - name: Build ${{ inputs.target }}
+        id: build
+        run: |
+          set -euo pipefail
+          T='${{ inputs.target }}'
+          case "$T" in
+            dolphin)
+              git clone --depth 1 https://github.com/dolphin-emu/dolphin.git src
+              git -C src submodule update --init --recursive --depth 1
+              cmake -S src -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLINUX_LOCAL_DEV=false \
+                -DDISTRIBUTOR=SteamDeck -DENABLE_TESTS=OFF -DCMAKE_INSTALL_PREFIX=/usr
+              cmake --build build -j"$(nproc)"
+              DESTDIR="$PWD/AppDir" cmake --install build
+              # The install already placed the entry and icon; point at those copies.
+              APPRUN_BIN=dolphin-emu; DESKTOP=AppDir/usr/share/applications/dolphin-emu.desktop
+              ICON=AppDir/usr/share/icons/hicolor/256x256/apps/dolphin-emu.png
+              ;;
+            pcsx2|cemu)
+              # Newer libraries than the runner image has (Qt 6.10 for PCSX2, wxWidgets 3.3 for
+              # Cemu): built in an Arch Linux ARM container, the rootfs's own distribution.
+              docker run --rm -v "$PWD:/work" -w /work -e CEMU_REF='${{ inputs.cemu_ref }}' menci/archlinuxarm:base-devel \
+                bash desktop/build-emulator-arch.sh "$T"
+              sudo chown -R "$(id -u):$(id -g)" .
+              echo "packaged=yes" >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+            *) echo "unknown target"; exit 2 ;;
+          esac
+          # The desktop entry and icon appimagetool insists on, placed where linuxdeploy looks for
+          # them. The icon takes the name the entry's Icon= line asks for, or the two never meet.
+          ICONNAME=$(sed -n 's/^Icon=//p' "$DESKTOP" | head -1); ICONNAME=${ICONNAME:-$APPRUN_BIN}
+          D="AppDir/usr/share/applications/$(basename "$DESKTOP")"; I="AppDir/usr/share/icons/hicolor/256x256/apps/$ICONNAME.png"
+          [ "$DESKTOP" -ef "$D" ] || install -Dm644 "$DESKTOP" "$D"
+          [ "$ICON" -ef "$I" ] || install -Dm644 "$ICON" "$I"
+          # -print -quit, not a pipe into head: under pipefail a closed pipe would end the step.
+          BIN=$(find AppDir/usr -maxdepth 3 -type f -name "$APPRUN_BIN" -print -quit)
+          [ -n "$BIN" ] || { echo "no $APPRUN_BIN in AppDir"; find AppDir -maxdepth 3 -type d; exit 3; }
+          echo "apprun=$BIN" >> "$GITHUB_OUTPUT"
+          echo "desktop=AppDir/usr/share/applications/$(basename "$DESKTOP")" >> "$GITHUB_OUTPUT"
+
+      - name: Package AppImage
+        if: steps.build.outputs.packaged != 'yes'
+        run: |
+          set -euo pipefail
+          export OUTPUT='${{ inputs.target }}.AppImage' QMAKE=/usr/lib/qt6/bin/qmake6 EXTRA_QT_PLUGINS=svg
+          linuxdeploy --appdir AppDir -e '${{ steps.build.outputs.apprun }}' \
+            -d '${{ steps.build.outputs.desktop }}' --plugin qt --output appimage
+          ls -l *.AppImage
+          sha256sum '${{ inputs.target }}.AppImage' | awk '{print $1}' > '${{ inputs.target }}.sha256'
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.release == 'none'
+        with:
+          name: ${{ inputs.target }}-appimage
+          path: |
+            ${{ inputs.target }}.AppImage
+            ${{ inputs.target }}.sha256
+      - name: Publish
+        if: inputs.release != 'none'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload '${{ inputs.release }}' '${{ inputs.target }}.AppImage' '${{ inputs.target }}.sha256' --clobber
+          echo "published ${{ inputs.target }} $(stat -c %s '${{ inputs.target }}.AppImage') $(cat '${{ inputs.target }}.sha256')"

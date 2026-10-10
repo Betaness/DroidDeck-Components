@@ -1,0 +1,226 @@
+{
+ "amstream__libs.tar.xz": {
+  "win32/amstream.dll": "26012b03ad7c0802a2f26bf89c6510a78f6f4ae44d5e5eed164e22db7db334f0",
+  "win64/amstream.dll": "fed6c36838e0a11cd0c003eeeaf8ef0e1c1f005c03a80a89165fc2da0c9693d1"
+ },
+ "atmlib__libs.tar.xz": {
+  "win32/atmlib.dll": "dd521f1af21c53158ceabc1b6d95a9ef978dff84410c568ed5763b601c9ed2d8"
+ },
+ "d3dcompiler_42__libs.tar.xz": {
+  "win32/d3dcompiler_42.dll": "6c976311406c23aa71018d274da0ecdef43b6e3a3b0b01e941a5e8e4e974386c",
+  "win64/d3dcompiler_42.dll": "4d61e843aa86d8801a60d01b8e872379c5b2503795a2bcbe6141978396ade00b"
+ },
+ "d3dcompiler_46__libs.tar.xz": {
+  "win32/d3dcompiler_46.dll": "58d9a00888af693b2a5222fe74cfded32ce83e74f85b474f1cbe5987217b5a9d",
+  "win64/d3dcompiler_46.dll": "b1a06f7aa52439a948a152bfd3301d9b595c78969bb77c9741bba935139f58a0"
+ },
+ "devenum__libs.tar.xz": {
+  "win32/devenum.dll": "ab49f2ebb9f99b640c14a4a1d830b35685aa758c7b1f5c62d77fdb6e09081387",
+  "win64/devenum.dll": "ab49f2ebb9f99b640c14a4a1d830b35685aa758c7b1f5c62d77fdb6e09081387"
+ },
+ "dx8vb__libs.tar.xz": {
+  "win32/dx8vb.dll": "b1c26cae457ea67bf2d54f8762c7ff98230935818e26f2cf9ae3350ea61dd91d"
+ },
+ "gdiplus__libs.tar.xz": {
+  "win32/gdiplus.dll": "c07a936009fb275d56dc451c7d05b5f5a3f4dcd985c7f02dee57d674034c602b",
+  "win64/gdiplus.dll": "980ea189929d95eb36e35980fff0c81f7b78de9422771fde8f4ac7a779f5bd89"
+ },
+ "gmdls__libs.tar.xz": {
+  "win64/drivers/gm.dls": "3229b09b9d7d9f3f4793b0d9b34fe6abc75cfa4a2503c0c90f43ff651ba7f2c0",
+  "win32/drivers/gm.dls": "3229b09b9d7d9f3f4793b0d9b34fe6abc75cfa4a2503c0c90f43ff651ba7f2c0"
+ },
+ "iertutil__libs.tar.xz": {
+  "win32/iertutil.dll": "f5cd7de4b315f318d495c4e28292fa47b96640d044502131934190ec58f3d1d5",
+  "win64/iertutil.dll": "89b894eccf65704d00d30ea3bd45b184bfab8345b779f9ae2be66b9fc7226f72"
+ },
+ "mediafoundation__libs.tar.xz": {
+  "win32/mf.dll": "045846267bcb1d9c4931a4871c887d8496e92df655936dd5d40375e09c950510",
+  "win64/mf.dll": "dbf0458bed308078edd82c81e6d1209e111c5bfa5d64dd068cedfd9e0a6c05ab"
+ },
+ "mfc40__libs.tar.xz": {
+  "win32/mfc40.dll": "b44b89aa6d5dc1790e1e6043ff2569f1ec31142e7659c42735a3e04c2256ffed",
+  "win32/mfc40u.dll": "02b8e9ee0b44526f74c3e6d072a2c4ab417c958774e6cbede9064ea66110e123"
+ },
+ "mfc42__libs.tar.xz": {
+  "win32/mfc42u.dll": "ea9227556f96415983065a476207cff2b36056b4010a358837a35c21cf32c877"
+ },
+ "msasn1__libs.tar.xz": {
+  "win64/msasn1.dll": "8d2b6750e90a27bfa916520cc3a52fbeac317aea40662bc0d9b71e4de34c1207"
+ },
+ "msftedit__libs.tar.xz": {
+  "win32/msftedit.dll": "04ed66befdb822181ebd1d84cbf0b17aaadf8455ae742f44d7adcb26ab07bdad",
+  "win64/msftedit.dll": "e15ed4fefc3010c213694331ddfdc03767682325c898d773ab243e2dc8b08461"
+ },
+ "msls31__libs.tar.xz": {
+  "win32/msls31.dll": "841fde9b24476a7ed364a3e4a1470ac9b7358bc92f29fca4a06aab557d140850"
+ },
+ "mspatcha__libs.tar.xz": {
+  "win32/mspatcha.dll": "202366e216cf3139ae49125a1614dc07dd2068f7a13d9570e5336f7532dd5e71"
+ },
+ "msxml6__libs.tar.xz": {
+  "win32/msxml6.dll": "f4174184a7420fe3d902836dc6c1ed0e54c28b5deb94ba08637df041b0926d95",
+  "win32/msxml6r.dll": "7ad08fdda21796679d070570713f91d798419b288412a0740e67c6b72d3febff",
+  "win64/msxml6.dll": "59d4bc37687ff06a26d202b284d048bdb6a14802d4e38f7923f2a1c8653e3889",
+  "win64/msxml6r.dll": "5647540a43d3b9f764e4d9bce0d14b5d9e17af59b394b7abfea5377e3dce699f"
+ },
+ "oalinst_dll__libs.tar.xz": {
+  "win64/OpenAL32.dll": "3963b06e319180700be0bcc0d027336664bb3a4975876b4a5442f10746fab5b4",
+  "win32/OpenAL32.dll": "606cf8b4c22c7ae00813585279ac045115907bc66d1483eb26355907021ea4b0"
+ },
+ "powershell__libs.tar.xz": {
+  "win32/powershell.exe": "212236f43b05c5e803b8bfb05c3137456ba5f799df9a442a3390fda755a35ea8",
+  "win64/powershell.exe": "f03523112548531e513cc64872d426b0752f96f653cdcd6785567c6ef65f15f7",
+  "profile.ps1": "9fdbd47ca304072b8444dda2f4338c61dab227248837d6952593bb2a8b95c80b"
+ },
+ "qasf__libs.tar.xz": {
+  "win32/qasf.dll": "baf44e2a33f86d8a5ec848804afcb7771d55d42a443980fce45bfecf71374dc8",
+  "win64/qasf.dll": "45f6313ef38d5488cef7b051895f19446b5c8d6c1de0847911389bcc84d0a608"
+ },
+ "qcap__libs.tar.xz": {
+  "win32/qcap.dll": "aff680e62d989a62cbdec2bf70b6d17f7615f9826eaee0c8a524af80f9ff862d",
+  "win64/qcap.dll": "44799a5f70c8610fdf371b159c7f7035cbf97038eed09e8bce0bdb90b63b0d9e"
+ },
+ "qdvd__libs.tar.xz": {
+  "win32/qdvd.dll": "b6a8105e4432e1778db2a832e1f93bc34f0c59ef955945dd8bbae835278598b9",
+  "win64/qdvd.dll": "7218f46b6b42bce78b2e1524cb21d9622bfe9b7bf544fb95aa17df373202fa94"
+ },
+ "qedit__libs.tar.xz": {
+  "win32/qedit.dll": "38fd8f09cee1bb17782c6d54222b32f41acbd4ea62af4104e5f6efc2c27cbc99",
+  "win64/qedit.dll": "e90693ecc0c5e146b13ef65c33ca1587b2d923a0f3cbbd15bcb65f17f8f9795f"
+ },
+ "quartz__libs.tar.xz": {
+  "win32/quartz.dll": "fa52a0d0647413deeef57c5cb632f73a97a48588c16877fc1cc66404c3c21a2b",
+  "win64/quartz.dll": "701e6047d6cc30feada589eb65cefa95fd708031dcb8417d78ef2639ffa3efdd"
+ },
+ "riched20__libs.tar.xz": {
+  "win32/riched20.dll": "c741226a0465a8c4edcbe0f3af54de02e21931122afe3a4dad8d49553fececcc"
+ },
+ "sqlite3.zip": {
+  "sqlite3.dll": "ec0debfaaa036fe1421f09da809848820f9a36d35edf09317f81a776379bc42b",
+  "sqlite3.def": "02e76d26e9afcb06313980ce577144a1d928ed39c4d189ad8652dca34712fc77"
+ },
+ "urlmon__libs.tar.xz": {
+  "win32/urlmon.dll": "669bed2f3a2cffb5e25fe6cf6956e61036fa1d9127ae59f05b22cfd57cea3e2a",
+  "win64/urlmon.dll": "2590e88cab52fcc1b24cb262d293131c6280a5f234e0c130e77aa8697efa3b5f"
+ },
+ "vcredist2005_dll__libs.tar.xz": {
+  "win64/msvcm80.dll": "835195907e9f3731a07e590e4bf15a3ebce17f53d3bb6cd6ef7cfb26fbde1f55",
+  "win64/msvcp80.dll": "40f6502679cee0b657b0005278fbe7213bdda6deaacf868058e17737c182e1b4",
+  "win64/msvcr80.dll": "690f12c490bee2bf17ab7b6804e6e9b96f51c304350ccde80fe5c7eefa89720e",
+  "win32/msvcm80.dll": "7dcb3c45938d31854e46b5e5b0e16d538e29230d1bc81086d40c8db3bdf510bc",
+  "win32/msvcp80.dll": "372af797353f9335915cd06d4076bab8410775dcaf2dac0593197d7c41bbffb2",
+  "win32/msvcr80.dll": "c3ac989c8489a23bb96400b1856f5325ffc67e844f04651ea5d61bc20a991c6d"
+ },
+ "vcredist2008_dll__libs.tar.xz": {
+  "win64/msvcm90.dll": "47b4e80f1173532365fceedaeeb495bdaefac4d362eb62bb92f4fea589d2c104",
+  "win64/msvcp90.dll": "b3f4fda27430acc6d6bc1c3cbd518b9cae5ba0f22ab8917578a7f16270f94c8b",
+  "win64/msvcr90.dll": "5330682ae9c08e5f2e30c5e256b91028389bbbddaa8c38950df76616fca854ff",
+  "win32/msvcm90.dll": "7a74da389fbd10a710c294c2e914dc6f18e05f028f07958a2fa53ac44f0e4b90",
+  "win32/msvcp90.dll": "06918cf99ad26cd6cf106881c0d5bdb212dc0bac4549805c9f5906e3d03d152c",
+  "win32/msvcr90.dll": "8e7fe1a1f3550c479ffd86a77bc9d10686d47f8727025bb891d8f4f0259354c8"
+ },
+ "vcredist2010_dll__libs.tar.xz": {
+  "win64/msvcp100.dll": "5bb420fbe28315f2117376052bb8488ce84a3398dda65005b8ae1f792017e9a8",
+  "win64/msvcr100.dll": "1d1a1ae540ba132f998d60d3622f0297b6e86ae399332c3b47462d7c0f560a36",
+  "win32/msvcp100.dll": "d769fafa2b3232de9fa7153212ba287f68e745257f1c00fafb511e7a02de7adf",
+  "win32/msvcr100.dll": "60c06e0fa4449314da3a0a87c1a9d9577df99226f943637e06f61188e5862efa"
+ },
+ "vcredist2012_dll__libs.tar.xz": {
+  "win64/msvcp110.dll": "27f394ae01d12f851f1dee3632dee3c5afa1d267f7a96321d35fd43105b035ad",
+  "win64/msvcr110.dll": "ae996edb9b050677c4f82d56092efdc75f0addc97a14e2c46753e2db3f6bd732",
+  "win32/msvcp110.dll": "c8d5572ca8d7624871188f0acabc3ae60d4c5a4f6782d952b9038de3bc28b39a",
+  "win32/msvcr110.dll": "b30160e759115e24425b9bcdf606ef6ebce4657487525ede7f1ac40b90ff7e49"
+ },
+ "vcredist2013_dll__libs.tar.xz": {
+  "win64/msvcp120.dll": "3b92e964404e3f94531e7d7c4c7419561d9eca6accd98dc3979c9e3596db444c",
+  "win64/msvcr120.dll": "753ac30c30aae62415cc225e3d057b8b6254afe280696e0a43f1a7c3132632a6",
+  "win32/msvcp120.dll": "0e535e147d253fc645ccb9406c888aee374ab1f3f9d99dc057a2b19cf401458b",
+  "win32/msvcr120.dll": "82225ec7e2da43a7a72a3d523698747512523afa488767ca6839c63a7a5706fa"
+ },
+ "vcredist2022_dll__libs.tar.xz": {
+  "win64/concrt140.dll": "b2faf3b85b23c840b654e57d5497a0ad31acd02fb01856cad4725a1715d5f78e",
+  "win64/msvcp140.dll": "def46aa6a8f72f27bafac0c43334419486a4d1dcdb6c479a8ef7034b3e1fa4cb",
+  "win64/msvcp140_1.dll": "2dd670f874562fbdca5b022df1943d70a57ba91fde559280e3a1daebe4db2380",
+  "win64/msvcp140_2.dll": "1d60da3ac2b06482912ca852fa7047436e6e474b4cfffa3bf77f4598cfbf454c",
+  "win64/msvcp140_atomic_wait.dll": "e7963645e0d1db08e300614d4c5fa7194bd8173e9ab7a5558859e6b232ed3241",
+  "win64/msvcp140_codecvt_ids.dll": "ae8d922b00cdd93e3ebecc37beb46c800f383ebdeb9f9e5b84e04a72428b6fb3",
+  "win64/vcamp140.dll": "617f6031929ec70a084a9dd1f01e037494a74d8c66703b7fb53e80547f90af28",
+  "win64/vccorlib140.dll": "6b8d8a76c3e6664293407553650e60b94df9aaafc7c92057ea83032bd228e44f",
+  "win64/vcomp140.dll": "31af29c03643f8396a6f26bcd601c6369d26493d7d78b714827ab2801bd284c7",
+  "win64/vcruntime140.dll": "184146852727a9db4eea06178716bec3cdbb1015c911f6b0f915b184ad7775b2",
+  "win64/vcruntime140_1.dll": "f4d66bdd6789aaed53341dc3153655e0ef2a9201c3652400443896a592e795b6",
+  "win32/concrt140.dll": "1a084b2275c02b4df2b0ae395a5312a3ad3143f5ace9ba08cfd4fc42cdf9bf61",
+  "win32/msvcp140.dll": "546ee2af2ffff02a34dbc1139bc6eb0eb5d67d83b3be782cfead374d29c8e01e",
+  "win32/msvcp140_1.dll": "c19ef5e0fc2de4207800c3e7642cb18a2bf65ec8b7bc1833922c2bd4bc8bfa8e",
+  "win32/msvcp140_2.dll": "8511395c8b36d0473aa1da9bd11a4cacc03511f77f837e997ca51047f29e145e",
+  "win32/msvcp140_atomic_wait.dll": "fc5d35783a30822a1d418ee8f08130c450f4465c1dd68ce09241ab77e33c1931",
+  "win32/msvcp140_codecvt_ids.dll": "79dcb9ef3986802cc9881ec80ee84d9f6a2ab075585da0f87561931821c0a9e7",
+  "win32/vcamp140.dll": "4c2c17577b9dbc7becd8caa0aff01b1d04534e0a1bb5712bcff8780dc092b39c",
+  "win32/vccorlib140.dll": "62ce34167c24c6f895da00acb5b65a8fb4ff392da5bdbeeece875ac3939df187",
+  "win32/vcomp140.dll": "b1df4f47c8746e49b0b7db55fc5d391a1442de04863ccba497530003182b7576",
+  "win32/vcruntime140.dll": "87fc734e0f2884985514edace58cf649a8ad67cb058dc7b7a4068f77af86810a"
+ },
+ "vcredist6__libs.tar.xz": {
+  "win32/asycfilt.dll": "de83c9d9203050b40c098e4143ef8f577aa90016c7a64d4f2931b57a4c43e566",
+  "win32/comcat.dll": "96d04cdfaf4f4d7b8722b139a15074975d4c244302f78034b7be65df1a92fd03",
+  "win32/mfc42.dll": "ec63a85030c60716acdcf060abfaa95a6a3528631622fa60e7d17fbea2f751f9",
+  "win32/mfc42u.dll": "5b3b68bb88be968a0c7c24887b437fac6d9081671b8d8376482168383ca30b8b",
+  "win32/msvcirt.dll": "647f7534aaaedffa93534e4cb9b24bfcf91524828ff0364d88973be58139e255",
+  "win32/msvcp60.dll": "2b6b93c2d66969eb00258e2b5ad6172decebada096e3b1b077a3380c80e4a072",
+  "win32/msvcrt.dll": "887eb5ce93edb7192ca3e9220f07f9ca0f94db02af5862ebcbdfcb852db99fd1",
+  "win32/oleaut32.dll": "baeb2f7c1b8be56738d34e1d1ddf8e0eebd3a633215dc1575e14656be38b939d",
+  "win32/olepro32.dll": "789c3c45eda1749bd939f4a96616e1e9ef1b7dcc62a2889f65088954c64d0938",
+  "win32/atla.dll": "e911ff1063d16348f353ee9001fbd43e04a3c8514028d964967d32dd87d83cca",
+  "win32/stdole2.tlb": "6ea525bface5467c1045c3708f339a4b92a3a273f70656e061c7f7322c56d667"
+ },
+ "vcredist6sp6_inner.exe": {
+  "vcredist6sp6_inner.exe": "ce05a2ad669fdc331cf43b4637f7c596c279685bc45eab005c15eb5ea495d5ea"
+ },
+ "winhttp__libs.tar.xz": {
+  "win32/winhttp.dll": "5b40a36e68c7b428001e7ece8de43fb5effcc8a8a63671de6735c35cfd17aed2"
+ },
+ "wininet__libs.tar.xz": {
+  "win32/wininet.dll": "4b01872788057ecf5a1ac6647512f5671213f76651ff8e808f1310a1240f35a2",
+  "win64/wininet.dll": "e3ebf44621efc6381baae0f0efc13c356dcb6ee31bb258137edb3cc3e18549b5"
+ },
+ "xaudio2.7__libs.tar.xz": {
+  "win32/XAudio2_2.dll": "9c7897b4ee1bcd190b1c0b7b77e64ee731d234764683a1e2286af70d86b62753",
+  "win32/XAPOFX1_1.dll": "5ab63c0f040fdf65e681eba4daa55ed83e89ea10c426dc2fc763da0fc94f3ace",
+  "win32/XAudio2_5.dll": "c596de2ab8394fb62538fef0b4657317f4ead50a6d798c5d066e25e334576c27",
+  "win32/XAPOFX1_3.dll": "c6956ac2ee59f71e86784138b5443de6970a1274ac161945b8a44dc1d535db84",
+  "win32/XAudio2_6.dll": "61b57170f7c6365714396072d22cb98746718c0f44c9f0d5c62fdb1b218639c7",
+  "win32/XAPOFX1_4.dll": "0aee44b12913a95840ee6431d90518b0d72c54a27392e21ee6995e2151554a06",
+  "win32/XAudio2_1.dll": "32a7c6a4edef46f025a4a5c64b892e29baaae948e86d9ed49e82014eec1441de",
+  "win32/XAPOFX1_0.dll": "8b396d275de2550af8ada6a1ff71f0f4870b51c8407e44044c2dde7ad6b754cc",
+  "win32/XAudio2_3.dll": "04dec9d7c68962e01efec0aac0ef7a3499bc4c16e8a41bd61fe6641da48d7dcc",
+  "win32/XAPOFX1_2.dll": "d1a55061bcb42f69b7cf35e2985d48e30c7a90f0bc668e90390f465b36bd0161",
+  "win32/XAudio2_7.dll": "d1690b602cb317f7f1e1e13e3fc5819ad8b5b38a92d812078afb1b408ccc4b69",
+  "win32/XAPOFX1_5.dll": "becfdcd6b16523573cb52df87aa7d993f1b345ba903d0618c3b36535c3800197",
+  "win32/XAudio2_0.dll": "e435b73193bdf651f7ae564eba05266595ac672db45e0e22dce92d0bcb3c6513",
+  "win32/XAudio2_4.dll": "bcde4317debd0052b1436a6fda60e1dcb1e308979498117fa0cb50061f38101c",
+  "win64/XAudio2_2.dll": "9ac81279b1625cbd9a8b59716aac63ef68d722dae586291457d24366a5f4e78b",
+  "win64/XAPOFX1_1.dll": "cd03a9ef13123c1b9ce3d92b9e9fd9b9682c9f66c167dd8a326e4bd0acff73f2",
+  "win64/XAudio2_5.dll": "36c77312026a3bd5fb928f4fe599a077b08264a82f2863875c2d4619ee133b71",
+  "win64/XAPOFX1_3.dll": "5f03017d3b51c1dc413952d21bf35ac660693c6f7539e8f8930ddd41d197a495",
+  "win64/XAudio2_6.dll": "3240447ef7bab48ec32a19f36e990bbddfdcb0f664fd9f58449f46788b5c32dd",
+  "win64/XAPOFX1_4.dll": "d42e7e91eafce25550f08a63240e23fbe3ddd278b852e36e4eab05bc42f5ec7d",
+  "win64/XAudio2_1.dll": "7c7c67e2255217d12c5c2afe53556c0f131049be7db4043aed9c1379b9ca9aa1",
+  "win64/XAPOFX1_0.dll": "671c24f825629381870567d726b7dbc3890d665648043c041eb1100163c49e12",
+  "win64/XAudio2_4.dll": "df7ddbea32acecc7fd6743002d211506ab75cb1685b4d2b708ea160c610a6f0d",
+  "win64/XAudio2_7.dll": "f8636ccc37bbfc84107992b60e4226eb7237417112267ed64b08f72983ac4314",
+  "win64/XAPOFX1_5.dll": "e47dcf74d50403b376c562e4121e359e5886e42fcc60b3fa8ba53e6826854c49",
+  "win64/XAudio2_0.dll": "eed9479428df33f7a9be5eca9806c2e3412509274638d13032c6c0ed1a3a9ef1",
+  "win64/XAudio2_3.dll": "d8e9c006edcf959f414ae7e3ff2e11af0885bc84cedc8249fdc1c5e71cdca8ba",
+  "win64/XAPOFX1_2.dll": "f16e5795fac7a97fc1ffb5d049c011ee5f0dcdc4c6393664b6a9d94f949fdf0f"
+ },
+ "xinput__libs.tar.xz": {
+  "win32/xinput1_1.dll": "69cd725c53e0302e75db20e9a3e4b33f58dceaa2e6ea4938b2733df8bc289a71",
+  "win32/xinput1_3.dll": "8d540d484ea41e374fd0107d55d253f87ded4ce780d515d8fd59bbe8c98970a7",
+  "win32/xinput1_2.dll": "9714d146a785d458f0de8fef387d82c9f8e101c02407a0cbeb06f02a69518eec",
+  "win32/xinput9_1_0.dll": "9c14c5afd282be3e16117ff35d9896a96bdef497c45da950a730d279bd0e0cf6",
+  "win64/xinput1_1.dll": "87c7f921bbf171fa04f7c2adaf8b25d4bf152d12c6b99771da42f3af07f78987",
+  "win64/xinput1_3.dll": "756cad002e1553cfa1a91ebe8c1b9380ffabe0b4b1916c4a4db802396ddfbef8",
+  "win64/xinput1_2.dll": "77055b6a144c4017acd0a8b34520cf9a84be6b9c75db40f7a708b9f4e38aa138",
+  "win64/xinput9_1_0.dll": "81c6dfcd7bcb4f2b2580a98c8e66a3eb624b44f48b80f42a1f8134e448171cc9"
+ }
+}

@@ -1,0 +1,1288 @@
+{
+ "_": "How each DLL bundle on system-libraries-v1 is built from the vendor's package (tools/bundles/build.py). 'sources': the packages (url + md5 from the Bottles dependency manifests at bottlesdevs/dependencies 8dd62af0, 2026-06-23; 'open': installer = DroidDeck's unpacker). 'files': from = <source name>:<glob inside the opened package, nested cabinets appear as <name>.opened/>, to = path in the bundle. The result must equal the hand-made bundle file for file (expect.json).",
+ "amstream__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-directshow-other_31bf3856ad364e35_6.1.7601.17514_none_0f58f1e53efca91e/amstream.dll",
+    "to": "win32/amstream.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-directshow-other_31bf3856ad364e35_6.1.7601.17514_none_6b778d68f75a1a54/amstream.dll",
+    "to": "win64/amstream.dll"
+   }
+  ]
+ },
+ "atmlib__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "w2ksp4_en.exe",
+    "url": "http://x3270.bgp.nu/download/specials/W2KSP4_EN.EXE",
+    "md5": "a4ef6c91d418418b287cefe31f958175"
+   }
+  ],
+  "files": [
+   {
+    "from": "w2ksp4_en.exe:i386/atmlib.dl_.opened/atmlib.dll",
+    "to": "win32/atmlib.dll"
+   }
+  ]
+ },
+ "d3dcompiler_42__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "directx_Jun2010_redist.exe",
+    "url": "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe",
+    "md5": "822e4c516600e81dc7fb16d9a77ec6d4"
+   }
+  ],
+  "files": [
+   {
+    "from": "directx_Jun2010_redist.exe:Aug2009_D3DCompiler_42_x86.cab.opened/D3DCompiler_42.dll",
+    "to": "win32/d3dcompiler_42.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:Aug2009_D3DCompiler_42_x64.cab.opened/D3DCompiler_42.dll",
+    "to": "win64/d3dcompiler_42.dll"
+   }
+  ]
+ },
+ "d3dcompiler_46__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "2630bae9681db6a9f6722366f47d055c.cab",
+    "url": "http://download.microsoft.com/download/F/1/3/F1300C9C-A120-4341-90DF-8A52509B23AC/standalonesdk/Installers/2630bae9681db6a9f6722366f47d055c.cab",
+    "md5": "9cc65b7e3aeebed781354b3a5399ece0"
+   },
+   {
+    "name": "61d57a7a82309cd161a854a6f4619e52.cab",
+    "url": "http://download.microsoft.com/download/F/1/3/F1300C9C-A120-4341-90DF-8A52509B23AC/standalonesdk/Installers/61d57a7a82309cd161a854a6f4619e52.cab",
+    "md5": "9b92033822629a13ea60d5b4459faa5c"
+   }
+  ],
+  "files": [
+   {
+    "from": "2630bae9681db6a9f6722366f47d055c.cab:fil47ed91e900f4b9d9659b66a211b57c39",
+    "to": "win32/d3dcompiler_46.dll"
+   },
+   {
+    "from": "61d57a7a82309cd161a854a6f4619e52.cab:fil8c20206095817436f8df4a711faee5b7",
+    "to": "win64/d3dcompiler_46.dll"
+   }
+  ]
+ },
+ "devenum__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "directx_feb2010_redist.exe",
+    "url": "https://files.holarse-linuxgaming.de/mirrors/microsoft/directx_feb2010_redist.exe",
+    "md5": "4cf007a355cb5f34a3c5c400113b33c3"
+   }
+  ],
+  "files": [
+   {
+    "from": "directx_feb2010_redist.exe:dxnt.cab.opened/devenum.dll",
+    "to": "win32/devenum.dll"
+   },
+   {
+    "from": "directx_feb2010_redist.exe:dxnt.cab.opened/devenum.dll",
+    "to": "win64/devenum.dll"
+   }
+  ]
+ },
+ "dx8vb__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "DX81NTger.exe",
+    "url": "https://download.microsoft.com/download/win2000pro/dx/8.1/NT5/DE/DX81NTger.exe",
+    "md5": "5cf0f5b3f28ace3f69fec74057f18f45"
+   }
+  ],
+  "files": [
+   {
+    "from": "DX81NTger.exe:*dx8vb.dll",
+    "to": "win32/dx8vb.dll"
+   }
+  ]
+ },
+ "gdiplus__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:gdiplus.dll",
+    "to": "win32/gdiplus.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:gdiplus.dll",
+    "to": "win64/gdiplus.dll"
+   }
+  ]
+ },
+ "gmdls__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "directx_apr2006_redist.exe",
+    "url": "https://web.archive.org/web/20100920035904id_/https://download.microsoft.com/download/3/9/7/3972f80c-5711-4e14-9483-959d48a2d03b/directx_apr2006_redist.exe",
+    "md5": "a4eef85d75e69b59a2b20ea57707c013"
+   }
+  ],
+  "files": [
+   {
+    "from": "directx_apr2006_redist.exe:DirectX.cab.opened/gm16.dls",
+    "to": "win64/drivers/gm.dls"
+   },
+   {
+    "from": "directx_apr2006_redist.exe:DirectX.cab.opened/gm16.dls",
+    "to": "win32/drivers/gm.dls"
+   }
+  ]
+ },
+ "iertutil__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "https://proxy.usebottles.com/redistributable/dependencies/windows6.1-kb976932-x86.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-ie-runtimeutilities_31bf3856ad364e35_8.0.7601.17514_none_64655b7c61c841cb/iertutil.dll",
+    "to": "win32/iertutil.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-ie-runtimeutilities_31bf3856ad364e35_8.0.7601.17514_none_c083f7001a25b301/iertutil.dll",
+    "to": "win64/iertutil.dll"
+   }
+  ]
+ },
+ "mediafoundation__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-mediafoundation_31bf3856ad364e35_6.1.7601.17514_none_9e6699276b03c38e/mf.dll",
+    "to": "win32/mf.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-mediafoundation_31bf3856ad364e35_6.1.7601.17514_none_fa8534ab236134c4/mf.dll",
+    "to": "win64/mf.dll"
+   }
+  ]
+ },
+ "mfc40__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "https://proxy.usebottles.com/redistributable/dependencies/windows6.1-kb976932-x86.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-mfc40_31bf3856ad364e35_6.1.7601.17514_none_5c06580240091047/mfc40.dll",
+    "to": "win32/mfc40.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-mfc40u_31bf3856ad364e35_6.1.7601.17514_none_f51a7bf0b3d25294/mfc40u.dll",
+    "to": "win32/mfc40u.dll"
+   }
+  ]
+ },
+ "mfc42__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "https://proxy.usebottles.com/redistributable/dependencies/windows6.1-kb976932-x86.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-mfc42x_31bf3856ad364e35_6.1.7601.17514_none_f51c382cb3d0d225/mfc42u.dll",
+    "to": "win32/mfc42u.dll"
+   }
+  ]
+ },
+ "msasn1__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "w2ksp4_en.exe",
+    "url": "http://x3270.bgp.nu/download/specials/W2KSP4_EN.EXE",
+    "md5": "a4ef6c91d418418b287cefe31f958175"
+   }
+  ],
+  "files": [
+   {
+    "from": "w2ksp4_en.exe:i386/msasn1.dl_.opened/msasn1.dll",
+    "to": "win64/msasn1.dll"
+   }
+  ]
+ },
+ "msftedit__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-msftedit_31bf3856ad364e35_6.1.7601.17514_none_d7d862f19573a5ff/msftedit.dll",
+    "to": "win32/msftedit.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-msftedit_31bf3856ad364e35_6.1.7601.17514_none_33f6fe754dd11735/msftedit.dll",
+    "to": "win64/msftedit.dll"
+   }
+  ]
+ },
+ "msls31__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "InstMsiW.exe",
+    "url": "https://proxy.usebottles.com/redistributable/dependencies/InstMsiW.exe",
+    "md5": "53820efbc952107ee1a38be6cd5aa3f0"
+   }
+  ],
+  "files": [
+   {
+    "from": "InstMsiW.exe:msls31.dll",
+    "to": "win32/msls31.dll"
+   }
+  ]
+ },
+ "mspatcha__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "w2ksp4_en.exe",
+    "url": "http://x3270.bgp.nu/download/specials/W2KSP4_EN.EXE",
+    "md5": "a4ef6c91d418418b287cefe31f958175"
+   }
+  ],
+  "files": [
+   {
+    "from": "w2ksp4_en.exe:*/mspatcha.dl_.opened/mspatcha.dll",
+    "to": "win32/mspatcha.dll"
+   }
+  ]
+ },
+ "msxml6__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "msxml6-KB973686-enu-amd64.exe",
+    "url": "https://web.archive.org/web/20190122095451id_/https://download.microsoft.com/download/1/5/8/158F681A-E595-472B-B15E-62B649B1B6FF/msxml6-KB973686-enu-amd64.exe",
+    "md5": "13a292beb9ebe46ac97b8a4352fe2cd5"
+   }
+  ],
+  "files": [
+   {
+    "from": "msxml6-KB973686-enu-amd64.exe:msxml6.msi.opened/msxml6.dll.86F857F6_A743_463D_B2FE_98CB5F727E09",
+    "to": "win32/msxml6.dll"
+   },
+   {
+    "from": "msxml6-KB973686-enu-amd64.exe:msxml6.msi.opened/msxml6r.dll.86F857F6_A743_463D_B2FE_98CB5F727E09",
+    "to": "win32/msxml6r.dll"
+   },
+   {
+    "from": "msxml6-KB973686-enu-amd64.exe:msxml6.msi.opened/msxml6.dll.1ECC0691_D2EB_4A33_9CBF_5487E5CB17DB",
+    "to": "win64/msxml6.dll"
+   },
+   {
+    "from": "msxml6-KB973686-enu-amd64.exe:msxml6.msi.opened/msxml6r.dll.1ECC0691_D2EB_4A33_9CBF_5487E5CB17DB",
+    "to": "win64/msxml6r.dll"
+   }
+  ]
+ },
+ "powershell__libs.tar.xz": {
+  "skip": "not rebuilt: the hand-made files match no release of the PowerShell wrapper (origin unknown); DroidDeck leaves this component out since Proton ships PowerShell. Kept as the mirrored, checksum-verified copy.",
+  "sources": [],
+  "files": []
+ },
+ "qasf__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-directshow-asf_31bf3856ad364e35_6.1.7601.17514_none_1cc4e9c15ccc8ae8/qasf.dll",
+    "to": "win32/qasf.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-directshow-asf_31bf3856ad364e35_6.1.7601.17514_none_78e385451529fc1e/qasf.dll",
+    "to": "win64/qasf.dll"
+   }
+  ]
+ },
+ "qcap__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-directshow-capture_31bf3856ad364e35_6.1.7601.17514_none_bae08d1e7dcccf2a/qcap.dll",
+    "to": "win32/qcap.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-directshow-capture_31bf3856ad364e35_6.1.7601.17514_none_16ff28a2362a4060/qcap.dll",
+    "to": "win64/qcap.dll"
+   }
+  ]
+ },
+ "qdvd__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-directshow-dvdsupport_31bf3856ad364e35_6.1.7601.17514_none_562994bd321aac67/qdvd.dll",
+    "to": "win32/qdvd.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-directshow-dvdsupport_31bf3856ad364e35_6.1.7601.17514_none_b2483040ea781d9d/qdvd.dll",
+    "to": "win64/qdvd.dll"
+   }
+  ]
+ },
+ "qedit__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-qedit_31bf3856ad364e35_6.1.7601.17514_none_5ca34698a5a970d2/qedit.dll",
+    "to": "win32/qedit.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-qedit_31bf3856ad364e35_6.1.7601.17514_none_b8c1e21c5e06e208/qedit.dll",
+    "to": "win64/qedit.dll"
+   }
+  ]
+ },
+ "quartz__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x86_c3516bc5c9e69fee6d9ac4f981f5b95977a8a2fa.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-directshow-core_31bf3856ad364e35_6.1.7601.17514_none_a877a1cc4c284497/quartz.dll",
+    "to": "win32/quartz.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-directshow-core_31bf3856ad364e35_6.1.7601.17514_none_04963d500485b5cd/quartz.dll",
+    "to": "win64/quartz.dll"
+   }
+  ]
+ },
+ "riched20__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "w2ksp4_en.exe",
+    "url": "https://proxy.usebottles.com/redistributable/dependencies/W2KSP4_EN.EXE",
+    "md5": "a4ef6c91d418418b287cefe31f958175"
+   }
+  ],
+  "files": [
+   {
+    "from": "w2ksp4_en.exe:i386/riched20.dl_.opened/riched20.dll",
+    "to": "win32/riched20.dll"
+   }
+  ]
+ },
+ "urlmon__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "https://proxy.usebottles.com/redistributable/dependencies/windows6.1-kb976932-x86.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-i..ersandsecurityzones_31bf3856ad364e35_8.0.7601.17514_none_d1a4c8feac0dfcdb/urlmon.dll",
+    "to": "win32/urlmon.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-i..ersandsecurityzones_31bf3856ad364e35_8.0.7601.17514_none_2dc36482646b6e11/urlmon.dll",
+    "to": "win64/urlmon.dll"
+   }
+  ]
+ },
+ "vcredist6__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "VC6RedistSetup_deu.exe",
+    "url": "https://download.microsoft.com/download/vc60pro/Update/2/W9XNT4/EN-US/VC6RedistSetup_deu.exe",
+    "md5": "53a0925609b366daa17051e1e4be3b86"
+   }
+  ],
+  "files": [
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/asycfilt.dll",
+    "to": "win32/asycfilt.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/comcat.dll",
+    "to": "win32/comcat.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/mfc42.dll",
+    "to": "win32/mfc42.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/mfc42u.dll",
+    "to": "win32/mfc42u.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/msvcirt.dll",
+    "to": "win32/msvcirt.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/msvcp60.dll",
+    "to": "win32/msvcp60.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/msvcrt.dll",
+    "to": "win32/msvcrt.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/oleaut32.dll",
+    "to": "win32/oleaut32.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/olepro32.dll",
+    "to": "win32/olepro32.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/atla.dll",
+    "to": "win32/atla.dll"
+   },
+   {
+    "from": "VC6RedistSetup_deu.exe:vcredist.exe.opened/stdole2.tlb",
+    "to": "win32/stdole2.tlb"
+   }
+  ]
+ },
+ "winhttp__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "w2ksp4_en.exe",
+    "url": "http://x3270.bgp.nu/download/specials/W2KSP4_EN.EXE",
+    "md5": "a4ef6c91d418418b287cefe31f958175"
+   }
+  ],
+  "files": [
+   {
+    "from": "w2ksp4_en.exe:i386/new/winhttp.dl_.opened/winhttp.dll",
+    "to": "win32/winhttp.dll"
+   }
+  ]
+ },
+ "wininet__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "windows6.1-kb976932-x86.exe",
+    "url": "https://proxy.usebottles.com/redistributable/dependencies/windows6.1-kb976932-x86.exe",
+    "md5": "4bf28fc00d86c936c89e2d91ef46758b"
+   },
+   {
+    "name": "windows6.1-kb976932-x64.exe",
+    "url": "http://download.windowsupdate.com/msdownload/update/software/svpk/2011/02/windows6.1-kb976932-x64_74865ef2562006e51d7f9333b4a8d45b7a749dab.exe",
+    "md5": "28d3932f714bf71d78e75d36aa2e0fb8"
+   }
+  ],
+  "files": [
+   {
+    "from": "windows6.1-kb976932-x86.exe:x86_microsoft-windows-i..tocolimplementation_31bf3856ad364e35_8.0.7601.17514_none_1eaaa4a07717236e/wininet.dll",
+    "to": "win32/wininet.dll"
+   },
+   {
+    "from": "windows6.1-kb976932-x64.exe:amd64_microsoft-windows-i..tocolimplementation_31bf3856ad364e35_8.0.7601.17514_none_7ac940242f7494a4/wininet.dll",
+    "to": "win64/wininet.dll"
+   }
+  ]
+ },
+ "xinput__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "directx_Jun2010_redist.exe",
+    "url": "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe",
+    "md5": "822e4c516600e81dc7fb16d9a77ec6d4"
+   }
+  ],
+  "files": [
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x86*.cab.opened/xinput1_1.dll",
+    "to": "win32/xinput1_1.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x86*.cab.opened/xinput1_2.dll",
+    "to": "win32/xinput1_2.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x86*.cab.opened/xinput1_3.dll",
+    "to": "win32/xinput1_3.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x86*.cab.opened/xinput9_1_0.dll",
+    "to": "win32/xinput9_1_0.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x64*.cab.opened/xinput1_1.dll",
+    "to": "win64/xinput1_1.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x64*.cab.opened/xinput1_2.dll",
+    "to": "win64/xinput1_2.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x64*.cab.opened/xinput1_3.dll",
+    "to": "win64/xinput1_3.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xinput*x64*.cab.opened/xinput9_1_0.dll",
+    "to": "win64/xinput9_1_0.dll"
+   }
+  ]
+ },
+ "xaudio2.7__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "directx_Jun2010_redist.exe",
+    "url": "https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/directx_Jun2010_redist.exe",
+    "md5": "822e4c516600e81dc7fb16d9a77ec6d4"
+   }
+  ],
+  "files": [
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAPOFX1_0.dll",
+    "to": "win32/XAPOFX1_0.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAPOFX1_1.dll",
+    "to": "win32/XAPOFX1_1.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAPOFX1_2.dll",
+    "to": "win32/XAPOFX1_2.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAPOFX1_3.dll",
+    "to": "win32/XAPOFX1_3.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAPOFX1_4.dll",
+    "to": "win32/XAPOFX1_4.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAPOFX1_5.dll",
+    "to": "win32/XAPOFX1_5.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_0.dll",
+    "to": "win32/XAudio2_0.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_1.dll",
+    "to": "win32/XAudio2_1.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_2.dll",
+    "to": "win32/XAudio2_2.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_3.dll",
+    "to": "win32/XAudio2_3.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_4.dll",
+    "to": "win32/XAudio2_4.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_5.dll",
+    "to": "win32/XAudio2_5.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_6.dll",
+    "to": "win32/XAudio2_6.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x86*.cab.opened/XAudio2_7.dll",
+    "to": "win32/XAudio2_7.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAPOFX1_0.dll",
+    "to": "win64/XAPOFX1_0.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAPOFX1_1.dll",
+    "to": "win64/XAPOFX1_1.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAPOFX1_2.dll",
+    "to": "win64/XAPOFX1_2.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAPOFX1_3.dll",
+    "to": "win64/XAPOFX1_3.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAPOFX1_4.dll",
+    "to": "win64/XAPOFX1_4.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAPOFX1_5.dll",
+    "to": "win64/XAPOFX1_5.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_0.dll",
+    "to": "win64/XAudio2_0.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_1.dll",
+    "to": "win64/XAudio2_1.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_2.dll",
+    "to": "win64/XAudio2_2.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_3.dll",
+    "to": "win64/XAudio2_3.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_4.dll",
+    "to": "win64/XAudio2_4.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_5.dll",
+    "to": "win64/XAudio2_5.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_6.dll",
+    "to": "win64/XAudio2_6.dll"
+   },
+   {
+    "from": "directx_Jun2010_redist.exe:*xaudio*x64*.cab.opened/XAudio2_7.dll",
+    "to": "win64/XAudio2_7.dll"
+   }
+  ]
+ },
+ "sqlite3.zip": {
+  "sources": [
+   {
+    "name": "sqlite-dll-win-x64-3460100.zip",
+    "url": "https://www.sqlite.org/2024/sqlite-dll-win-x64-3460100.zip",
+    "md5": "",
+    "open": "7z"
+   }
+  ],
+  "files": [
+   {
+    "from": "sqlite-dll-win-x64-3460100.zip:sqlite3.dll",
+    "to": "sqlite3.dll"
+   },
+   {
+    "from": "sqlite-dll-win-x64-3460100.zip:sqlite3.def",
+    "to": "sqlite3.def"
+   }
+  ]
+ },
+ "vcredist6sp6_inner.exe": {
+  "sources": [
+   {
+    "name": "VS6SP6.EXE",
+    "url": "https://www.ddsystem.com.br/update/setup/vb6+sp6/VS6SP6.EXE",
+    "md5": "b69f34e54fe4603f8d42021891743651"
+   }
+  ],
+  "files": [
+   {
+    "from": "VS6SP6.EXE:vcredist.exe",
+    "to": "vcredist6sp6_inner.exe"
+   }
+  ]
+ },
+ "vcredist2005_dll__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "vcredist2005__vcredist_x86.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2005__vcredist_x86.exe",
+    "md5": "4f1611f2d0ae799507f60c10ff8654c5",
+    "open": "install"
+   },
+   {
+    "name": "vcredist2005__vcredist_x64.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2005__vcredist_x64.exe",
+    "md5": "e231fbcce2c2cb16dcc299d36c734df3",
+    "open": "install"
+   }
+  ],
+  "files": [
+   {
+    "from": [
+     "vcredist2005__vcredist_x86.exe:*/syswow64/msvcm80.dll",
+     "vcredist2005__vcredist_x86.exe:*/winsxs/x86*/msvcm80.dll",
+     "vcredist2005__vcredist_x86.exe:*/msvcm80.dll"
+    ],
+    "to": "win32/msvcm80.dll"
+   },
+   {
+    "from": [
+     "vcredist2005__vcredist_x86.exe:*/syswow64/msvcp80.dll",
+     "vcredist2005__vcredist_x86.exe:*/winsxs/x86*/msvcp80.dll",
+     "vcredist2005__vcredist_x86.exe:*/msvcp80.dll"
+    ],
+    "to": "win32/msvcp80.dll"
+   },
+   {
+    "from": [
+     "vcredist2005__vcredist_x86.exe:*/syswow64/msvcr80.dll",
+     "vcredist2005__vcredist_x86.exe:*/winsxs/x86*/msvcr80.dll",
+     "vcredist2005__vcredist_x86.exe:*/msvcr80.dll"
+    ],
+    "to": "win32/msvcr80.dll"
+   },
+   {
+    "from": [
+     "vcredist2005__vcredist_x64.exe:*/system32/msvcm80.dll",
+     "vcredist2005__vcredist_x64.exe:*/winsxs/amd64*/msvcm80.dll",
+     "vcredist2005__vcredist_x64.exe:*/msvcm80.dll"
+    ],
+    "to": "win64/msvcm80.dll"
+   },
+   {
+    "from": [
+     "vcredist2005__vcredist_x64.exe:*/system32/msvcp80.dll",
+     "vcredist2005__vcredist_x64.exe:*/winsxs/amd64*/msvcp80.dll",
+     "vcredist2005__vcredist_x64.exe:*/msvcp80.dll"
+    ],
+    "to": "win64/msvcp80.dll"
+   },
+   {
+    "from": [
+     "vcredist2005__vcredist_x64.exe:*/system32/msvcr80.dll",
+     "vcredist2005__vcredist_x64.exe:*/winsxs/amd64*/msvcr80.dll",
+     "vcredist2005__vcredist_x64.exe:*/msvcr80.dll"
+    ],
+    "to": "win64/msvcr80.dll"
+   }
+  ]
+ },
+ "vcredist2008_dll__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "vcredist2008__vcredist_x86.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2008__vcredist_x86.exe",
+    "md5": "a92a4d8e784d8f859217f828fe879047",
+    "open": "install"
+   },
+   {
+    "name": "vcredist2008__vcredist_x64.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2008__vcredist_x64.exe",
+    "md5": "472c10efa75a30deb2a15ec8b777227b",
+    "open": "install"
+   }
+  ],
+  "files": [
+   {
+    "from": [
+     "vcredist2008__vcredist_x86.exe:*/syswow64/msvcm90.dll",
+     "vcredist2008__vcredist_x86.exe:*/winsxs/x86*/msvcm90.dll",
+     "vcredist2008__vcredist_x86.exe:*/msvcm90.dll"
+    ],
+    "to": "win32/msvcm90.dll"
+   },
+   {
+    "from": [
+     "vcredist2008__vcredist_x86.exe:*/syswow64/msvcp90.dll",
+     "vcredist2008__vcredist_x86.exe:*/winsxs/x86*/msvcp90.dll",
+     "vcredist2008__vcredist_x86.exe:*/msvcp90.dll"
+    ],
+    "to": "win32/msvcp90.dll"
+   },
+   {
+    "from": [
+     "vcredist2008__vcredist_x86.exe:*/syswow64/msvcr90.dll",
+     "vcredist2008__vcredist_x86.exe:*/winsxs/x86*/msvcr90.dll",
+     "vcredist2008__vcredist_x86.exe:*/msvcr90.dll"
+    ],
+    "to": "win32/msvcr90.dll"
+   },
+   {
+    "from": [
+     "vcredist2008__vcredist_x64.exe:*/system32/msvcm90.dll",
+     "vcredist2008__vcredist_x64.exe:*/winsxs/amd64*/msvcm90.dll",
+     "vcredist2008__vcredist_x64.exe:*/msvcm90.dll"
+    ],
+    "to": "win64/msvcm90.dll"
+   },
+   {
+    "from": [
+     "vcredist2008__vcredist_x64.exe:*/system32/msvcp90.dll",
+     "vcredist2008__vcredist_x64.exe:*/winsxs/amd64*/msvcp90.dll",
+     "vcredist2008__vcredist_x64.exe:*/msvcp90.dll"
+    ],
+    "to": "win64/msvcp90.dll"
+   },
+   {
+    "from": [
+     "vcredist2008__vcredist_x64.exe:*/system32/msvcr90.dll",
+     "vcredist2008__vcredist_x64.exe:*/winsxs/amd64*/msvcr90.dll",
+     "vcredist2008__vcredist_x64.exe:*/msvcr90.dll"
+    ],
+    "to": "win64/msvcr90.dll"
+   }
+  ]
+ },
+ "vcredist2010_dll__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "vcredist2010__vcredist_x86.exe",
+    "url": "https://download.microsoft.com/download/C/6/D/C6D0FD4E-9E53-4897-9B91-836EBA2AACD3/vcredist_x86.exe",
+    "md5": "bd2af26fccd52e01511ff3e088f4c8bb",
+    "open": "install"
+   },
+   {
+    "name": "vcredist2010__vcredist_x64.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2010__vcredist_x64.exe",
+    "md5": "be79543624f806ced4c7dff25751a3e4",
+    "open": "install"
+   }
+  ],
+  "files": [
+   {
+    "from": [
+     "vcredist2010__vcredist_x86.exe:*/syswow64/msvcp100.dll",
+     "vcredist2010__vcredist_x86.exe:*/winsxs/x86*/msvcp100.dll",
+     "vcredist2010__vcredist_x86.exe:*/msvcp100.dll"
+    ],
+    "to": "win32/msvcp100.dll"
+   },
+   {
+    "from": [
+     "vcredist2010__vcredist_x86.exe:*/syswow64/msvcr100.dll",
+     "vcredist2010__vcredist_x86.exe:*/winsxs/x86*/msvcr100.dll",
+     "vcredist2010__vcredist_x86.exe:*/msvcr100.dll"
+    ],
+    "to": "win32/msvcr100.dll"
+   },
+   {
+    "from": [
+     "vcredist2010__vcredist_x64.exe:*/system32/msvcp100.dll",
+     "vcredist2010__vcredist_x64.exe:*/winsxs/amd64*/msvcp100.dll",
+     "vcredist2010__vcredist_x64.exe:*/msvcp100.dll"
+    ],
+    "to": "win64/msvcp100.dll"
+   },
+   {
+    "from": [
+     "vcredist2010__vcredist_x64.exe:*/system32/msvcr100.dll",
+     "vcredist2010__vcredist_x64.exe:*/winsxs/amd64*/msvcr100.dll",
+     "vcredist2010__vcredist_x64.exe:*/msvcr100.dll"
+    ],
+    "to": "win64/msvcr100.dll"
+   }
+  ]
+ },
+ "vcredist2012_dll__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "vcredist2012__vcredist_x86.exe",
+    "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe",
+    "md5": "7f52a19ecaf7db3c163dd164be3e592e",
+    "open": "install"
+   },
+   {
+    "name": "vcredist2012__vcredist_x64.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2012__vcredist_x64.exe",
+    "md5": "3c03562b5af9ed347614053d459d7778",
+    "open": "install"
+   }
+  ],
+  "files": [
+   {
+    "from": [
+     "vcredist2012__vcredist_x86.exe:*/syswow64/msvcp110.dll",
+     "vcredist2012__vcredist_x86.exe:*/winsxs/x86*/msvcp110.dll",
+     "vcredist2012__vcredist_x86.exe:*/msvcp110.dll"
+    ],
+    "to": "win32/msvcp110.dll"
+   },
+   {
+    "from": [
+     "vcredist2012__vcredist_x86.exe:*/syswow64/msvcr110.dll",
+     "vcredist2012__vcredist_x86.exe:*/winsxs/x86*/msvcr110.dll",
+     "vcredist2012__vcredist_x86.exe:*/msvcr110.dll"
+    ],
+    "to": "win32/msvcr110.dll"
+   },
+   {
+    "from": [
+     "vcredist2012__vcredist_x64.exe:*/system32/msvcp110.dll",
+     "vcredist2012__vcredist_x64.exe:*/winsxs/amd64*/msvcp110.dll",
+     "vcredist2012__vcredist_x64.exe:*/msvcp110.dll"
+    ],
+    "to": "win64/msvcp110.dll"
+   },
+   {
+    "from": [
+     "vcredist2012__vcredist_x64.exe:*/system32/msvcr110.dll",
+     "vcredist2012__vcredist_x64.exe:*/winsxs/amd64*/msvcr110.dll",
+     "vcredist2012__vcredist_x64.exe:*/msvcr110.dll"
+    ],
+    "to": "win64/msvcr110.dll"
+   }
+  ]
+ },
+ "vcredist2013_dll__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "vcredist2013__vcredist_x86.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2013__vcredist_x86.exe",
+    "md5": "38a1b890ce847167d16567cf7b7a5642",
+    "open": "install"
+   },
+   {
+    "name": "vcredist2013__vcredist_x64.exe",
+    "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/system-libraries-v1/vcredist2013__vcredist_x64.exe",
+    "md5": "49b1164f8e95ec6409ea83cdb352d8da",
+    "open": "install"
+   }
+  ],
+  "files": [
+   {
+    "from": [
+     "vcredist2013__vcredist_x86.exe:*/syswow64/msvcp120.dll",
+     "vcredist2013__vcredist_x86.exe:*/winsxs/x86*/msvcp120.dll",
+     "vcredist2013__vcredist_x86.exe:*/msvcp120.dll"
+    ],
+    "to": "win32/msvcp120.dll"
+   },
+   {
+    "from": [
+     "vcredist2013__vcredist_x86.exe:*/syswow64/msvcr120.dll",
+     "vcredist2013__vcredist_x86.exe:*/winsxs/x86*/msvcr120.dll",
+     "vcredist2013__vcredist_x86.exe:*/msvcr120.dll"
+    ],
+    "to": "win32/msvcr120.dll"
+   },
+   {
+    "from": [
+     "vcredist2013__vcredist_x64.exe:*/system32/msvcp120.dll",
+     "vcredist2013__vcredist_x64.exe:*/winsxs/amd64*/msvcp120.dll",
+     "vcredist2013__vcredist_x64.exe:*/msvcp120.dll"
+    ],
+    "to": "win64/msvcp120.dll"
+   },
+   {
+    "from": [
+     "vcredist2013__vcredist_x64.exe:*/system32/msvcr120.dll",
+     "vcredist2013__vcredist_x64.exe:*/winsxs/amd64*/msvcr120.dll",
+     "vcredist2013__vcredist_x64.exe:*/msvcr120.dll"
+    ],
+    "to": "win64/msvcr120.dll"
+   }
+  ]
+ },
+ "vcredist2022_dll__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "VC_redist.x86.exe",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/ece44298-3977-4f73-ab91-c13fe79cfea8/F0BAB33A302B3CDB2E11113760D016F54FD3D2632C65BA7834FAC4F0ABD7F1A3/VC_redist.x86.exe",
+    "md5": "8f442d99f1a6bbd563bac8a3cc39953d",
+    "open": "install"
+   },
+   {
+    "name": "VC_redist.x64.exe",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/ebdab8e5-1d7b-4d9f-a11b-cbb1720c3b12/843068991DAAA1F73AD9F6239BCE4D0F6A07A51F18C37EA2A867E9BECA71295C/VC_redist.x64.exe",
+    "md5": "8da7373f3ec287fe1c3ad72a7b2922f0",
+    "open": "install"
+   }
+  ],
+  "files": [
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/concrt140.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/concrt140.dll",
+     "VC_redist.x86.exe:*/concrt140.dll"
+    ],
+    "to": "win32/concrt140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/msvcp140.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/msvcp140.dll",
+     "VC_redist.x86.exe:*/msvcp140.dll"
+    ],
+    "to": "win32/msvcp140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/msvcp140_1.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/msvcp140_1.dll",
+     "VC_redist.x86.exe:*/msvcp140_1.dll"
+    ],
+    "to": "win32/msvcp140_1.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/msvcp140_2.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/msvcp140_2.dll",
+     "VC_redist.x86.exe:*/msvcp140_2.dll"
+    ],
+    "to": "win32/msvcp140_2.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/msvcp140_atomic_wait.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/msvcp140_atomic_wait.dll",
+     "VC_redist.x86.exe:*/msvcp140_atomic_wait.dll"
+    ],
+    "to": "win32/msvcp140_atomic_wait.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/msvcp140_codecvt_ids.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/msvcp140_codecvt_ids.dll",
+     "VC_redist.x86.exe:*/msvcp140_codecvt_ids.dll"
+    ],
+    "to": "win32/msvcp140_codecvt_ids.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/vcamp140.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/vcamp140.dll",
+     "VC_redist.x86.exe:*/vcamp140.dll"
+    ],
+    "to": "win32/vcamp140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/vccorlib140.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/vccorlib140.dll",
+     "VC_redist.x86.exe:*/vccorlib140.dll"
+    ],
+    "to": "win32/vccorlib140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/vcomp140.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/vcomp140.dll",
+     "VC_redist.x86.exe:*/vcomp140.dll"
+    ],
+    "to": "win32/vcomp140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x86.exe:*/syswow64/vcruntime140.dll",
+     "VC_redist.x86.exe:*/winsxs/x86*/vcruntime140.dll",
+     "VC_redist.x86.exe:*/vcruntime140.dll"
+    ],
+    "to": "win32/vcruntime140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/concrt140.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/concrt140.dll",
+     "VC_redist.x64.exe:*/concrt140.dll"
+    ],
+    "to": "win64/concrt140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/msvcp140.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/msvcp140.dll",
+     "VC_redist.x64.exe:*/msvcp140.dll"
+    ],
+    "to": "win64/msvcp140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/msvcp140_1.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/msvcp140_1.dll",
+     "VC_redist.x64.exe:*/msvcp140_1.dll"
+    ],
+    "to": "win64/msvcp140_1.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/msvcp140_2.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/msvcp140_2.dll",
+     "VC_redist.x64.exe:*/msvcp140_2.dll"
+    ],
+    "to": "win64/msvcp140_2.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/msvcp140_atomic_wait.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/msvcp140_atomic_wait.dll",
+     "VC_redist.x64.exe:*/msvcp140_atomic_wait.dll"
+    ],
+    "to": "win64/msvcp140_atomic_wait.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/msvcp140_codecvt_ids.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/msvcp140_codecvt_ids.dll",
+     "VC_redist.x64.exe:*/msvcp140_codecvt_ids.dll"
+    ],
+    "to": "win64/msvcp140_codecvt_ids.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/vcamp140.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/vcamp140.dll",
+     "VC_redist.x64.exe:*/vcamp140.dll"
+    ],
+    "to": "win64/vcamp140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/vccorlib140.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/vccorlib140.dll",
+     "VC_redist.x64.exe:*/vccorlib140.dll"
+    ],
+    "to": "win64/vccorlib140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/vcomp140.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/vcomp140.dll",
+     "VC_redist.x64.exe:*/vcomp140.dll"
+    ],
+    "to": "win64/vcomp140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/vcruntime140.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/vcruntime140.dll",
+     "VC_redist.x64.exe:*/vcruntime140.dll"
+    ],
+    "to": "win64/vcruntime140.dll"
+   },
+   {
+    "from": [
+     "VC_redist.x64.exe:*/system32/vcruntime140_1.dll",
+     "VC_redist.x64.exe:*/winsxs/amd64*/vcruntime140_1.dll",
+     "VC_redist.x64.exe:*/vcruntime140_1.dll"
+    ],
+    "to": "win64/vcruntime140_1.dll"
+   }
+  ],
+  "accept_different": "the hand-made bundle holds 14.50.35719, which Microsoft no longer serves; built from the Visual Studio 2026 release channel (14.51.36247, newer), so nothing regresses"
+ },
+ "oalinst_dll__libs.tar.xz": {
+  "sources": [
+   {
+    "name": "openal-soft-1.25.2-bin.zip",
+    "url": "https://github.com/kcat/openal-soft/releases/download/1.25.2/openal-soft-1.25.2-bin.zip",
+    "md5": "",
+    "open": "zip"
+   }
+  ],
+  "files": [
+   {
+    "from": "openal-soft-1.25.2-bin.zip:*/bin/Win32/soft_oal.dll",
+    "to": "win32/OpenAL32.dll"
+   },
+   {
+    "from": "openal-soft-1.25.2-bin.zip:*/bin/Win64/soft_oal.dll",
+    "to": "win64/OpenAL32.dll"
+   }
+  ]
+ }
+}

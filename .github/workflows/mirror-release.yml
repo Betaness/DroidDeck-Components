@@ -1,0 +1,185 @@
+name: Mirror a release
+
+# Brings a release's assets into this repo by CI: every asset is downloaded from the source
+# release, checked against what the catalog that points at it promises (md5/size from the Bottles
+# manifests in components.json, sha256/size in desktop.json, linuxfs.json and steam-seed.json,
+# the files-archive sha256 inside each recording), uploaded under the same tag here, and its
+# sha256 confirmed against what GitHub stored. A SHA256SUMS and a MIRROR.md naming this run go
+# with it. Nothing is uploaded by hand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (same on the source and here)'
+        required: true
+      source_repo:
+        description: 'Repository the release is mirrored from'
+        required: true
+        default: 'The412Banner/winlator-contents'
+      catalogs:
+        description: 'Space-separated catalog files (or "snapshots") that point at this release, for verification'
+        required: true
+        default: 'components.json'
+      title:
+        description: 'Release title (used when the release is created here)'
+        required: false
+        default: ''
+      upstream:
+        description: 'Fetch vendor files from their original links (Bottles manifests, pinned) rather than the source release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: system-libraries-v1
+  cancel-in-progress: false
+
+env:
+  # The Bottles dependency manifests the catalog's checksums came from, at the commit current when
+  # the catalog was made (2026-06-23): their links are where the vendor files are fetched from.
+  BOTTLES_SHA: 8dd62af0e53f9b46e6757193a98c146384b0a0d8
+
+jobs:
+  mirror:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mirror
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ inputs.source_repo || 'The412Banner/winlator-contents' }}
+          ONE_TAG: ${{ inputs.tag }}
+          ONE_CATALOGS: ${{ inputs.catalogs }}
+          ONE_TITLE: ${{ inputs.title }}
+          UPSTREAM: ${{ inputs.upstream }}
+        run: |
+          set -euo pipefail
+          # The pinned Bottles manifests, for the vendors' own links.
+          bottles=$(mktemp -d)
+          curl -fsSL "https://github.com/bottlesdevs/dependencies/archive/$BOTTLES_SHA.tar.gz" | tar -xz --strip-components=1 -C "$bottles"
+          echo "Bottles manifests at $BOTTLES_SHA: $(find "$bottles" -name '*.yml' | wc -l)"
+          # tag|catalogs|title, one per line; a dispatch mirrors just its own tag.
+          if [ -n "$ONE_TAG" ]; then
+            sets="$ONE_TAG|$ONE_CATALOGS|$ONE_TITLE"
+          else
+            sets=$(cat <<'LIST'
+          system-libraries-v1|components.json|Windows components (system libraries)
+          component-snapshots-v1|snapshots|Component snapshots
+          steamdeck-desktop-r1|desktop.json|Desktop and emulator packages
+          linuxfs-r9|linuxfs.json|Linux runtime r9
+          steam-proton-arm64-25502785|steam-seed.json|Steam seed: Proton Experimental (ARM64) 25502785
+          LIST
+          )
+          fi
+          failed=""
+          echo "$sets" | while IFS='|' read -r tag catalogs title; do
+            tag=$(echo "$tag" | xargs); catalogs=$(echo "$catalogs" | xargs); title=$(echo "$title" | xargs)
+            [ -n "$tag" ] || continue
+            echo "::group::$tag from $SOURCE"
+            work=$(mktemp -d)
+            assets=$(gh release view "$tag" -R "$SOURCE" --json assets -q '.assets[].name' | grep -vE '^(SHA256SUMS|MIRROR.md|BUILT.md)$' || true)
+            count=$(echo "$assets" | grep -c . || true)
+            echo "$count assets on $SOURCE/$tag"
+            # GitHub's stored sha256 of every asset on both sides: an asset already here with the
+            # same digest as the source is not moved again, so a re-run only does what is missing.
+            gh api "repos/$SOURCE/releases/tags/$tag" --paginate --jq '.assets[] | "\(.name) \(.digest // "")"' > "$work/source.digests"
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --paginate --jq '.assets[] | "\(.name) \(.digest // "")"' > "$work/here.digests" 2>/dev/null || : > "$work/here.digests"
+            # Expectations: the catalogs in this checkout, or the recordings themselves.
+            if [ "$catalogs" = snapshots ]; then
+              mkdir -p "$work/snap"
+              echo "$assets" | grep '\.snapshot\.json$' | while read -r name; do
+                gh release download "$tag" -R "$SOURCE" -p "$name" -D "$work/snap" --clobber
+              done
+              python3 tools/mirror/expectations.py "$tag" "$work/snap" > "$work/expect.json"
+            else
+              python3 tools/mirror/expectations.py "$tag" $catalogs > "$work/expect.json"
+            fi
+            # Vendor links for the assets a Bottles manifest describes with the same checksum.
+            echo '{}' > "$work/upstream.json"
+            if [ "$UPSTREAM" = true ] && [ "$catalogs" != snapshots ] && echo "$catalogs" | grep -q components.json; then
+              python3 tools/mirror/upstream.py components.json "$bottles" "$tag" > "$work/upstream.json"
+              echo "$(python3 -c "import json;print(len(json.load(open('$work/upstream.json'))))") assets have a vendor link"
+            fi
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" --title "${title:-$tag}" --latest=false \
+                --notes "Mirrored by CI from $SOURCE ($tag): $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Each asset was checked against the catalog that points at it (see MIRROR.md) and its sha256 confirmed after upload."
+            fi
+            : > "$work/SHA256SUMS"
+            {
+              echo "# Mirror of $SOURCE/$tag"
+              echo
+              echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+              echo "Verified against: $catalogs"
+              echo
+              echo "| asset | size | catalog check | origin |"
+              echo "|---|---|---|---|"
+            } > "$work/MIRROR.md"
+            : > "$work/failed"
+            echo "$assets" | while read -r name; do
+              [ -n "$name" ] || continue
+              case "$name" in SHA256SUMS|MIRROR.md|BUILT.md) continue;; esac
+              src_digest=$(awk -v n="$name" '$1==n{print $2}' "$work/source.digests")
+              here_digest=$(awk -v n="$name" '$1==n{print $2}' "$work/here.digests")
+              vendor=$(python3 -c "import json,sys;print(json.load(open('$work/upstream.json')).get(sys.argv[1],''))" "$name")
+              origin="copied from $SOURCE"
+              if [ -n "$vendor" ]; then
+                # The vendor's own file; the source release is the fallback if the link has died.
+                if curl -fL --retry 3 --retry-delay 15 --max-time 1500 -o "$work/asset" "$vendor"; then
+                  origin="fetched from the vendor: $(echo "$vendor" | cut -d/ -f3)"
+                else
+                  echo "::warning::$name: vendor link failed ($vendor); taking the source release's copy"
+                  origin="copied from $SOURCE (vendor link failed)"
+                  rm -f "$work/asset"
+                fi
+              elif [ -n "$src_digest" ] && [ "$src_digest" = "$here_digest" ]; then
+                echo "$name: already here with the same sha256, skipped"
+                echo "${src_digest#sha256:}  $name" >> "$work/SHA256SUMS"
+                echo "| $name | | already mirrored (same sha256) | |" >> "$work/MIRROR.md"
+                continue
+              fi
+              if [ ! -s "$work/asset" ]; then
+                for attempt in 1 2 3; do
+                  gh release download "$tag" -R "$SOURCE" -p "$name" -O "$work/asset" --clobber && break
+                  [ "$attempt" -lt 3 ] || { echo "::error::could not download $name"; exit 1; }
+                  sleep 20
+                done
+              fi
+              if out=$(python3 tools/mirror/verify.py "$work/asset" "$name" "$work/expect.json"); then
+                check=$(echo "$out" | sed -n 2p | sed 's/^ *//')
+              else
+                echo "$out"; echo "::error::$name failed verification and was not uploaded"
+                echo "$name" >> "$work/failed"; rm -f "$work/asset"; continue
+              fi
+              echo "$out" | head -1
+              sha=$(sha256sum "$work/asset" | cut -d' ' -f1)
+              size=$(stat -c %s "$work/asset")
+              cp "$work/asset" "$work/$name"
+              for attempt in 1 2 3; do
+                gh release upload "$tag" "$work/$name" --clobber && break
+                [ "$attempt" -lt 3 ] || { echo "::error::could not upload $name"; exit 1; }
+                sleep 20
+              done
+              stored=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq ".assets[] | select(.name==\"$name\") | .digest" | sed 's/^sha256://')
+              if [ -n "$stored" ] && [ "$stored" != "$sha" ]; then
+                echo "::error::$name: GitHub stored sha256 $stored, uploaded $sha"; exit 1
+              fi
+              echo "$sha  $name" >> "$work/SHA256SUMS"
+              echo "| $name | $size | $check | $origin |" >> "$work/MIRROR.md"
+              rm -f "$work/$name" "$work/asset"
+            done
+            # SHA256SUMS from what GitHub holds now (covers files other workflows built onto this release).
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --paginate --jq '.assets[] | select(.name!="SHA256SUMS" and .name!="MIRROR.md" and .name!="BUILT.md") | "\(.digest|sub("^sha256:";""))  \(.name)"' | sort -k2 > "$work/SHA256SUMS"
+            gh release upload "$tag" "$work/SHA256SUMS" "$work/MIRROR.md" --clobber
+            here=$(gh release view "$tag" --json assets -q '.assets[].name' | grep -vcE '^(SHA256SUMS|MIRROR.md|BUILT.md)$' || true)
+            nfailed=$(grep -c . "$work/failed" || true)
+            echo "$tag: $here of $count assets mirrored; $nfailed refused by verification"
+            { echo "## $tag"; echo; echo "$here of $count assets mirrored from \`$SOURCE\`, verified against \`$catalogs\`."; [ "$nfailed" = 0 ] || { echo; echo "Refused:"; sed 's/^/- /' "$work/failed"; }; echo; } >> "$GITHUB_STEP_SUMMARY"
+            [ "$here" = "$count" ] && [ "$nfailed" = 0 ] || { echo "::error::$tag: $here of $count assets, $nfailed refused"; exit 1; }
+            rm -rf "$work"
+            echo "::endgroup::"
+          done
