@@ -1,0 +1,11 @@
+{
+ "_": "Vendor links for assets whose Bottles manifest (pinned 2026-06-23) points at the wrong file; the catalog carries the right checksum. The mirror fetches these from the vendor and verifies them like any other.",
+ "vcredist2010__vcredist_x86.exe": {
+  "url": "https://download.microsoft.com/download/C/6/D/C6D0FD4E-9E53-4897-9B91-836EBA2AACD3/vcredist_x86.exe",
+  "why": "the manifest's 2010 x86 is the original release (10.0.30319) while its x64 is SP1 (10.0.40219); this is SP1 x86"
+ },
+ "vcredist2012__vcredist_x86.exe": {
+  "url": "https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF2-B699-5E9B7962F9AE/VSU_4/vcredist_x86.exe",
+  "why": "the manifest's 2012 x86 link is the 2010 installer; this is 2012 Update 4 x86 (11.0.61030)"
+ }
+}

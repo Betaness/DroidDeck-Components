@@ -1,0 +1,79 @@
+name: Build the DLL bundles
+
+# Rebuilds the DLL bundles on system-libraries-v1 from the vendors' own packages
+# (tools/bundles/recipes.json), checks each against the hand-made bundle it replaces file for
+# file (tools/bundles/expect.json), packs it reproducibly and publishes it, with BUILT.md naming
+# this run and every source package's origin and md5. A bundle that differs is refused.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundles:
+        description: 'Space-separated bundle file names, or all'
+        required: true
+        default: 'all'
+      release:
+        description: 'Release the bundles are published to'
+        required: true
+        default: 'system-libraries-v1'
+
+permissions:
+  contents: write
+
+# One writer at a time on the release (the mirror workflow shares this group).
+concurrency:
+  group: system-libraries-v1
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools (cabextract, 7-Zip, msitools for DroidDeck's unpacker)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends cabextract p7zip-full msitools >/dev/null
+          # DroidDeck's own installer unpacker, as the phone runs it (pinned to the commit that merged it).
+          curl -fsSL -o droiddeck-msi-install "https://raw.githubusercontent.com/Droid-Deck/DroidDeck/9b90386e73b83ac5b43a64831b150c7852c18e38/tools/linuxfs/overlay/usr/local/bin/droiddeck-msi-install" \
+            || curl -fsSL -o droiddeck-msi-install "https://raw.githubusercontent.com/Droid-Deck/DroidDeck/main/tools/linuxfs/overlay/usr/local/bin/droiddeck-msi-install"
+          python3 -m py_compile droiddeck-msi-install
+          echo "DROIDDECK_MSIINFO=$(command -v msiinfo)" >> "$GITHUB_ENV"
+          echo "DROIDDECK_CABEXTRACT=$(command -v cabextract)" >> "$GITHUB_ENV"
+          echo "DROIDDECK_7Z=$(command -v 7z)" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUNDLES: ${{ inputs.bundles || 'all' }}
+        run: |
+          set -euo pipefail
+          only=""
+          [ "$BUNDLES" = all ] || only="--only $BUNDLES"
+          python3 tools/bundles/build.py --recipes tools/bundles/recipes.json --expect tools/bundles/expect.json \
+            --out out --cache cache --unpacker ./droiddeck-msi-install $only 2>&1 | tee build.log
+          { echo "## DLL bundles"; echo; tail -1 build.log; echo; grep -E '^   (built|skipped|REFUSED)' build.log | sed 's/^   /- /'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release || 'system-libraries-v1' }}
+        run: |
+          set -euo pipefail
+          sed -i "1a\\\\nBuilt by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID.\n" out/BUILT.md
+          gh release upload "$TAG" out/* --clobber
+          # SHA256SUMS from what GitHub now holds, so it covers the rebuilt files.
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --paginate --jq '.assets[] | select(.name!="SHA256SUMS" and .name!="MIRROR.md" and .name!="BUILT.md") | "\(.digest|sub("^sha256:";""))  \(.name)"' | sort -k2 > SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --clobber
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dll-bundles
+          path: |
+            out/
+            build.log

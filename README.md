@@ -34,3 +34,14 @@ repository pins by name and sha256.
 
 GPL-3.0, the same as DroidDeck. See [LICENSE](LICENSE). The patch series modifies Wine, which is
 LGPL-2.1-or-later.
+
+## Catalogs and mirrored releases
+
+DroidDeck reads its package catalogs from this repository's `main`: `components.json` (Windows
+components), `desktop.json` (desktop and emulator packages), `linuxfs.json` (the Linux runtime) and
+`steam-seed.json` (the Steam seed). Every file they point at lives on a release here, produced by a
+workflow in `.github/workflows/`: `mirror-release.yml` brings an existing release in with every
+asset checked against the catalog (and leaves `SHA256SUMS` + `MIRROR.md` naming the run),
+`component-snapshots.yml` records what a Windows component's installer leaves behind,
+`build-desktop.yml`, `build-emulator-source.yml`, `mirror-appimages.yml` and `build-linuxfs.yml`
+build the rest. Nothing on a release is uploaded by hand.
