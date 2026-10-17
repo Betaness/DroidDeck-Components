@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "category": "fex",
+  "release": "fex-2610-r3",
+  "name": "FEX for the x86-64 Steam client",
+  "version": "2610-r3",
+  "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/fex-2610-r3/fex.tzst",
+  "sha256": "a076f5930d07a7f00463aea222e0089fc5c0cdea1bc956ed25de63d456dd2614",
+  "size": 4045908,
+  "file_size": 4045908,
+  "note": "FEX-Emu 2610 built for the Linux runtime by tools/fex/build-in-arch.sh in the DroidDeck repository (patches in tools/fex/patches, host thunks included). droiddeck-steam-x64 downloads it for the optional x86-64 Steam client and pins this sha256. Mirrored from The412Banner/DroidDeck release fex-2610-r3."
+}
