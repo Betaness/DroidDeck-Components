@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "category": "fex",
-  "release": "fex-2610-r5",
+  "release": "fex",
   "name": "FEX for the x86-64 Steam client",
-  "version": "2610-r5",
-  "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/fex-2610-r5/fex.tzst",
-  "sha256": "0fc1ca2ba13817ad70d1ea157119a75c9c02446b57d166e6d676cce0807c19c4",
-  "size": 4083539,
-  "file_size": 4083539,
-  "note": "FEX-Emu 2610 built for the Linux runtime by tools/fex/build-in-arch.sh in the DroidDeck repository (patches in tools/fex/patches, host thunks included). r5 bundles libxxhash, which the runtime does not ship, beside libFEXCore with RUNPATH $ORIGIN/../lib on the programs that need it. droiddeck-steam-x64 downloads it for the optional x86-64 Steam client and pins this sha256. Mirrored from The412Banner/DroidDeck release fex-2610-r5."
+  "version": "2610-r6",
+  "url": "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/fex/fex.tzst",
+  "sha256": "d0bd9981db467dffe4ba9cfc65bf87014577d65a769163d8d08e60abee9760dd",
+  "size": 4083361,
+  "file_size": 4083361,
+  "note": "FEX built for the Linux runtime from tools/fex of Droid-Deck/DroidDeck 7d21ba22332a82d06a39d972bf552e97d6517773 by build-fex.yml (host thunks, libraries the runtime lacks bundled). The app reads this file and installs the build only once its archive matches this sha256 and its programs load; the archive on the fex release is replaced with each build."
 }
