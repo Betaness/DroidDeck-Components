@@ -10,7 +10,7 @@ archive=$(realpath "$2")
 exe=$(realpath "$3")
 work=$(realpath -m "$4")
 here=$(cd "$(dirname "$0")" && pwd)
-guest=$here/../linuxfs/overlay/usr/local/bin/droiddeck-esync
+guest=${DROIDDECK_ESYNC_GUEST:-$here/../droiddeck/tools/linuxfs/overlay/usr/local/bin/droiddeck-esync}
 rm -rf "$work"
 mkdir -p "$work/pack"
 tar --zstd -xf "$archive" -C "$work/pack"
