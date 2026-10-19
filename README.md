@@ -30,6 +30,21 @@ repository pins by name and sha256.
   signs a new index (environment `droiddeck-esync-signing`, `main` only).
 - `tests/`: unit tests for the tools and workflows.
 
+## VR module
+
+`vr.tar.zst` holds what DroidDeck's VR features need beyond the apk: the SteamVR driver, Vulkan
+layer and hand render models staged into the Linux runtime, the camera hand tracking and pose
+models, the Luma Ultra base calibration, and the OpenCV and MediaPipe native libraries their
+Java classes in the apk load. Users download it on request and can uninstall it.
+
+| Release | Contents |
+| --- | --- |
+| `vr-rN` | `vr.tar.zst`, `vr.sha256` and `vr.files.txt` (every file with its sha256) |
+
+`.github/workflows/build-vr.yml` builds `tools/vr/module` of DroidDeck at the given ref and
+publishes it under a new tag; a published tag is never replaced. The apk pins one release by tag,
+sha256 and size in `tools/vr/module/release.env` of the app repository.
+
 ## License
 
 GPL-3.0, the same as DroidDeck. See [LICENSE](LICENSE). The patch series modifies Wine, which is
@@ -49,5 +64,6 @@ asset checked against the catalog (and leaves `SHA256SUMS` + `MIRROR.md` naming 
 `build-fex.yml` builds FEX from DroidDeck's `tools/fex` and replaces it on the single `fex` release before
 recording the new version in `fex.json`,
 `component-snapshots.yml` records what a Windows component's installer leaves behind,
+`build-vr.yml` builds the VR module (above),
 `build-desktop.yml`, `build-emulator-source.yml`, `mirror-appimages.yml` and `build-linuxfs.yml`
 build the rest. Nothing on a release is uploaded by hand.

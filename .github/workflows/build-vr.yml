@@ -1,0 +1,96 @@
+name: Build the VR module
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish, e.g. vr-r1 (a published tag is never replaced)'
+        required: true
+      ref:
+        description: 'Droid-Deck/DroidDeck branch, tag or commit whose tools/vr/module is built'
+        required: true
+        default: 'main'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-vr
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Refuse a published tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          echo "$TAG" | grep -Eqx 'vr-r[0-9]+' || { echo "::error::tag must look like vr-r1"; exit 1; }
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::$TAG is already published, and published tags are never replaced: use a new tag"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          repository: Droid-Deck/DroidDeck
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - id: source
+        run: echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu g++-aarch64-linux-gnu zstd >/dev/null
+          tools/vr/module/build.sh out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vr-module
+          compression-level: 0
+          path: |
+            out/vr.tar.zst
+            out/vr.sha256
+            out/vr.files.txt
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vr-module
+          path: out
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          COMMIT: ${{ needs.build.outputs.commit }}
+        run: |
+          set -euo pipefail
+          sha=$(sha256sum out/vr.tar.zst | cut -d' ' -f1)
+          [ "$sha" = "$(cat out/vr.sha256)" ] || { echo "::error::vr.tar.zst does not match vr.sha256"; exit 1; }
+          size=$(stat -c %s out/vr.tar.zst)
+          run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh release create "$TAG" --latest=false --prerelease=false --title "VR module $TAG" \
+            --notes "SteamVR driver, Vulkan layer, hand tracking models and their OpenCV and MediaPipe libraries that DroidDeck downloads on request: tools/vr/module of Droid-Deck/DroidDeck $COMMIT, built by $run. sha256 $sha, $size bytes. vr.files.txt lists every file with its sha256. Pin it in tools/vr/module/release.env." \
+            out/vr.tar.zst out/vr.sha256 out/vr.files.txt
+          stored=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[] | select(.name == "vr.tar.zst") | .digest')
+          [ "$stored" = "sha256:$sha" ] || { echo "::error::GitHub stored vr.tar.zst as $stored, not sha256:$sha"; exit 1; }
+          {
+            echo '```'
+            echo "VR_MODULE_REPO=$GITHUB_REPOSITORY"
+            echo "VR_MODULE_TAG=$TAG"
+            echo "VR_MODULE_SHA256=$sha"
+            echo "VR_MODULE_SIZE=$size"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
