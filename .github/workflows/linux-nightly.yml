@@ -1,0 +1,700 @@
+name: Linux components nightly
+
+# Builds the latest upstream DXVK, VKD3D-Proton and FEX for DroidDeck's Linux Steam client, whose
+# games run on glibc Protons, and keeps them on ONE release, linux-nightly: a rebuilt package
+# replaces its previous file there and the release notes are rewritten. watch-linux-nightly.yml
+# starts it with only the components whose upstream moved.
+#
+# Packages: dxvk, dxvk-arm64ec, dxvk-gplasync, vkd3d-proton, vkd3d-proton-arm64ec, fex. The build
+# steps follow the all-in-one nightly of The412Banner/Nightlies (same sources, toolchains, cross
+# files and gplasync patch); only the packaging differs: a Proton tree under files/lib/wine/ with
+# profile type DXVK-Linux / VKD3D-Linux / FEXCore-Linux. FEX's unixlibs are built against glibc
+# (the Nightlies ones are bionic, for Android), as in its fexcore-linux-stable workflow.
+#
+# Names: DD-<package>-<version>-nightly.wcp, where version is the last upstream tag ("3.1.1") or the
+# commits past it ("3.1.1+151"). versionName follows the stable -Linux packages of Nightlies
+# (version, flavor, suffix): DD-3.1.1+151-nightly, DD-3.1.1+151-arm64ec-nightly, DD-2610+54-nightly.
+# If the gplasync patch no longer applies or builds on DXVK master, the previous gplasync file stays.
+#
+# Only runs on main publish. Runs on other branches build, then show the notes they would publish.
+
+on:
+  workflow_dispatch:
+    inputs:
+      components:
+        description: 'Components to build, space separated: dxvk vkd3d fex'
+        required: true
+        default: 'dxvk vkd3d fex'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-nightly
+  cancel-in-progress: false
+
+env:
+  LLVM_MINGW_TAG: '20251104'
+  GPLASYNC_PATCH_URL: https://raw.githubusercontent.com/The412Banner/Nightlies/main/patches/dxvk-gplasync-master.patch
+
+jobs:
+  plan:
+    if: ${{ github.repository == 'Droid-Deck/DroidDeck-Components' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      dxvk: ${{ steps.plan.outputs.dxvk }}
+      vkd3d: ${{ steps.plan.outputs.vkd3d }}
+      fex: ${{ steps.plan.outputs.fex }}
+    steps:
+      - id: plan
+        env:
+          COMPONENTS: ${{ inputs.components }}
+        run: |
+          set -euo pipefail
+          plan='{}'
+          for c in $COMPONENTS; do
+            case "$c" in
+              dxvk)  url=https://github.com/doitsujin/dxvk ;;
+              vkd3d) url=https://github.com/HansKristian-Work/vkd3d-proton ;;
+              fex)   url=https://github.com/FEX-Emu/FEX ;;
+              *) echo "::error::unknown component $c"; exit 1 ;;
+            esac
+            sha=$(git ls-remote "$url" HEAD | cut -f1)
+            [ -n "$sha" ] || { echo "::error::could not read $url HEAD"; exit 1; }
+            echo "$c=$sha" >> "$GITHUB_OUTPUT"
+            plan=$(jq -c --arg c "$c" --arg s "$sha" '. + {($c): $s}' <<<"$plan")
+            echo "$c: $sha"
+          done
+          echo "plan=$plan" >> "$GITHUB_OUTPUT"
+
+  dxvk:
+    needs: plan
+    if: ${{ needs.plan.outputs.dxvk != '' }}
+    name: DXVK (${{ matrix.flavor }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [plain, gplasync]
+    env:
+      COMMIT: ${{ needs.plan.outputs.dxvk }}
+      ID: ${{ matrix.flavor == 'plain' && 'dxvk' || 'dxvk-gplasync' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mingw-w64 wget git xz-utils python3 meson ninja-build build-essential unzip zip patch jq zstd file ccache
+
+      - name: Week (glslang cache key)
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache glslang
+        id: cache-glslang
+        uses: actions/cache@v4
+        with:
+          path: glslang
+          key: glslang-master-tot-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: glslang-master-tot-${{ runner.os }}-
+
+      - name: Setup glslang
+        run: |
+          if [ "${{ steps.cache-glslang.outputs.cache-hit }}" != true ]; then
+            wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
+            unzip -qo glslang-master-linux-Release.zip -d glslang
+          fi
+          echo "$PWD/glslang/bin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-dxvk-${{ matrix.flavor }}-${{ env.COMMIT }}
+          restore-keys: ccache-dxvk-${{ matrix.flavor }}-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
+          # package-release.sh picks the MinGW compilers from PATH: ccache symlinks shadow them.
+          mkdir -p ~/ccache-bin
+          for c in x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++ i686-w64-mingw32-gcc i686-w64-mingw32-g++; do
+            ln -sf "$(which ccache)" ~/ccache-bin/$c
+          done
+          echo "$HOME/ccache-bin" >> "$GITHUB_PATH"
+      - name: Clone DXVK
+        run: bash tools/linux-nightly/clone.sh https://github.com/doitsujin/dxvk.git dxvk "$COMMIT"
+
+      - name: Apply the gplasync patch
+        id: patch
+        if: ${{ matrix.flavor == 'gplasync' }}
+        run: |
+          set -uo pipefail
+          curl -fsSL "$GPLASYNC_PATCH_URL" -o gplasync.patch || { echo "reason=the gplasync patch could not be downloaded" >> "$GITHUB_OUTPUT"; exit 0; }
+          echo "patch sha256 $(sha256sum gplasync.patch | cut -d' ' -f1)"
+          cd dxvk
+          # patch --fuzz (not git apply), as in Nightlies: tolerates minor context drift vs master.
+          if patch -p1 --fuzz=3 --dry-run < ../gplasync.patch >/dev/null 2>&1 && patch -p1 --fuzz=3 < ../gplasync.patch; then
+            echo "applied=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::the gplasync patch does not apply to DXVK ${COMMIT:0:8}; the previous gplasync build stays"
+            echo "reason=the gplasync patch does not apply to this DXVK commit" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        id: build
+        if: ${{ matrix.flavor == 'plain' || steps.patch.outputs.applied == '1' }}
+        continue-on-error: ${{ matrix.flavor == 'gplasync' }}
+        run: |
+          set -euo pipefail
+          cd dxvk
+          sed -i 's/\bninja\b/ninja -j$(nproc)/g' package-release.sh
+          ./package-release.sh master ../dxvk-built --no-package
+
+      - name: Package
+        if: ${{ steps.build.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          read -r tag distance version < <(bash tools/linux-nightly/version.sh dxvk 'v[0-9]*' v)
+          mkdir -p stage
+          cp -r dxvk-built/dxvk-master/x64 stage/system32
+          cp -r dxvk-built/dxvk-master/x32 stage/syswow64
+          since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
+          if [ "$ID" = dxvk ]; then
+            name="DD-dxvk-$version-nightly.wcp"; vname="DD-$version-nightly"
+            desc="DXVK master, $since (${COMMIT:0:8}). Upstream: Philip Rebohle."
+          else
+            name="DD-dxvk-gplasync-$version-nightly.wcp"; vname="DD-$version-gplasync-nightly"
+            desc="DXVK master + gplasync, $since (${COMMIT:0:8}). Upstream: Philip Rebohle, gplasync: Ph42oN."
+          fi
+          bash tools/linux-nightly/pack.sh "$ID" stage out "$name" "$vname" "$desc" "$COMMIT" "$tag" "$distance" \
+            "$(git -C dxvk log -1 --format=%s)"
+
+      - name: Record that gplasync was not updated
+        if: ${{ matrix.flavor == 'gplasync' && steps.build.outcome != 'success' }}
+        env:
+          REASON: ${{ steps.patch.outputs.reason || 'the gplasync-patched tree does not build' }}
+        run: |
+          mkdir -p out
+          jq -n --arg id "$ID" --arg r "$REASON" '{id: $id, comp: "dxvk", status: "kept", reason: $r}' > "out/$ID.json"
+          echo "::warning::$REASON (DXVK ${COMMIT:0:8}); the previous gplasync build stays"
+
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-nightly-${{ env.ID }}
+          path: out/
+          if-no-files-found: error
+
+  dxvk-arm64ec:
+    needs: plan
+    if: ${{ needs.plan.outputs.dxvk != '' }}
+    name: DXVK (arm64ec)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      COMMIT: ${{ needs.plan.outputs.dxvk }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl xz-utils jq git build-essential \
+            python3 pkg-config zstd meson ninja-build wget unzip zip file ccache
+
+      - name: Week (glslang cache key)
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache glslang
+        id: cache-glslang
+        uses: actions/cache@v4
+        with:
+          path: glslang
+          key: glslang-master-tot-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: glslang-master-tot-${{ runner.os }}-
+
+      - name: Setup glslang
+        run: |
+          if [ "${{ steps.cache-glslang.outputs.cache-hit }}" != true ]; then
+            wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
+            unzip -qo glslang-master-linux-Release.zip -d glslang
+          fi
+          echo "$PWD/glslang/bin" >> "$GITHUB_PATH"
+
+      - name: Cache LLVM-MinGW
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          # In $HOME, not /opt: the cache restores as the runner user, who cannot write /opt.
+          path: ~/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_TAG }}-ubuntu22
+
+      - name: Setup LLVM-MinGW
+        run: |
+          if [ ! -x ~/llvm-mingw/bin/clang ]; then
+            wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
+            mkdir -p ~/llvm-mingw && tar -C ~/llvm-mingw --strip-components=1 -xJf llvm.tar.xz
+          fi
+          sudo ln -sfn ~/llvm-mingw /opt/llvm-mingw
+          echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-dxvk-arm64ec-${{ env.COMMIT }}
+          restore-keys: ccache-dxvk-arm64ec-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
+
+      - name: Clone DXVK
+        run: bash tools/linux-nightly/clone.sh https://github.com/doitsujin/dxvk.git dxvk "$COMMIT"
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          cat <<EOF > arm64ec.txt
+          [binaries]
+          c = ['ccache', 'arm64ec-w64-mingw32-clang']
+          cpp = ['ccache', 'arm64ec-w64-mingw32-clang++']
+          ar = 'llvm-ar'
+          strip = 'llvm-strip'
+          windres = 'arm64ec-w64-mingw32-windres'
+          widl = 'arm64ec-w64-mingw32-widl'
+          pkg-config = 'pkg-config'
+          [host_machine]
+          system = 'windows'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+          EOF
+          cat <<EOF > x86.txt
+          [binaries]
+          c = ['ccache', 'i686-w64-mingw32-clang']
+          cpp = ['ccache', 'i686-w64-mingw32-clang++']
+          ar = 'llvm-ar'
+          strip = 'llvm-strip'
+          windres = 'i686-w64-mingw32-windres'
+          widl = 'i686-w64-mingw32-widl'
+          pkg-config = 'pkg-config'
+          [host_machine]
+          system = 'windows'
+          cpu_family = 'x86'
+          cpu = 'i686'
+          endian = 'little'
+          EOF
+          cd dxvk
+          meson setup build-ec --cross-file ../arm64ec.txt -Dbuildtype=release -Dstrip=true
+          meson setup build-x86 --cross-file ../x86.txt -Dbuildtype=release -Dstrip=true
+          ninja -C build-ec -j$(nproc)
+          ninja -C build-x86 -j$(nproc)
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          read -r tag distance version < <(bash tools/linux-nightly/version.sh dxvk 'v[0-9]*' v)
+          copy_dll() {
+            cp "dxvk/$1/src/d3d11/d3d11.dll" "$2/"
+            cp "dxvk/$1/src/d3d10/d3d10core.dll" "$2/"
+            cp "dxvk/$1/src/d3d9/d3d9.dll" "$2/"
+            cp "dxvk/$1/src/d3d8/d3d8.dll" "$2/" || true
+            cp "dxvk/$1/src/dxgi/dxgi.dll" "$2/"
+          }
+          mkdir -p stage/system32 stage/syswow64
+          copy_dll build-ec stage/system32
+          copy_dll build-x86 stage/syswow64
+          llvm-strip --strip-all stage/system32/*.dll stage/syswow64/*.dll
+          since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
+          bash tools/linux-nightly/pack.sh dxvk-arm64ec stage out "DD-dxvk-arm64ec-$version-nightly.wcp" "DD-$version-arm64ec-nightly" \
+            "DXVK master ARM64EC, $since (${COMMIT:0:8}). Upstream: Philip Rebohle." \
+            "$COMMIT" "$tag" "$distance" "$(git -C dxvk log -1 --format=%s)"
+
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-nightly-dxvk-arm64ec
+          path: out/
+          if-no-files-found: error
+
+  vkd3d:
+    needs: plan
+    if: ${{ needs.plan.outputs.vkd3d != '' }}
+    name: VKD3D-Proton (${{ matrix.flavor }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [standard, arm64ec]
+    env:
+      COMMIT: ${{ needs.plan.outputs.vkd3d }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates curl xz-utils jq git zip \
+            build-essential python3 pkg-config zstd \
+            meson ninja-build wget unzip file ccache
+
+      - name: Week (glslang cache key)
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache glslang
+        id: cache-glslang
+        uses: actions/cache@v4
+        with:
+          path: glslang
+          key: glslang-master-tot-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: glslang-master-tot-${{ runner.os }}-
+
+      - name: Setup glslang
+        run: |
+          if [ "${{ steps.cache-glslang.outputs.cache-hit }}" != true ]; then
+            wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
+            unzip -qo glslang-master-linux-Release.zip -d glslang
+          fi
+          echo "$PWD/glslang/bin" >> "$GITHUB_PATH"
+
+      - name: Cache LLVM-MinGW
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          # In $HOME, not /opt: the cache restores as the runner user, who cannot write /opt.
+          path: ~/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_TAG }}-ubuntu22
+
+      - name: Setup LLVM-MinGW
+        run: |
+          if [ ! -x ~/llvm-mingw/bin/clang ]; then
+            wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
+            mkdir -p ~/llvm-mingw && tar -C ~/llvm-mingw --strip-components=1 -xJf llvm.tar.xz
+          fi
+          sudo ln -sfn ~/llvm-mingw /opt/llvm-mingw
+          echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-vkd3d-${{ matrix.flavor }}-${{ env.COMMIT }}
+          restore-keys: ccache-vkd3d-${{ matrix.flavor }}-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
+
+      - name: Clone VKD3D-Proton
+        run: bash tools/linux-nightly/clone.sh https://github.com/HansKristian-Work/vkd3d-proton src "$COMMIT"
+
+      - name: Build
+        env:
+          FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          if [ "$FLAVOR" = standard ]; then
+            cat <<EOF > cross-64.txt
+          [binaries]
+          c = ['ccache', '/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang']
+          cpp = ['ccache', '/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang++']
+          ar = '/opt/llvm-mingw/bin/llvm-ar'
+          strip = '/opt/llvm-mingw/bin/llvm-strip'
+          windres = '/opt/llvm-mingw/bin/x86_64-w64-mingw32-windres'
+          widl = '/opt/llvm-mingw/bin/x86_64-w64-mingw32-widl'
+          pkg-config = 'pkg-config'
+          exe_wrapper = ['wine']
+          [host_machine]
+          system = 'windows'
+          cpu_family = 'x86_64'
+          cpu = 'x86_64'
+          endian = 'little'
+          EOF
+            cat <<EOF > cross-x86.txt
+          [binaries]
+          c = ['ccache', '/opt/llvm-mingw/bin/i686-w64-mingw32-clang']
+          cpp = ['ccache', '/opt/llvm-mingw/bin/i686-w64-mingw32-clang++']
+          ar = '/opt/llvm-mingw/bin/llvm-ar'
+          strip = '/opt/llvm-mingw/bin/llvm-strip'
+          windres = '/opt/llvm-mingw/bin/i686-w64-mingw32-windres'
+          widl = '/opt/llvm-mingw/bin/i686-w64-mingw32-widl'
+          pkg-config = 'pkg-config'
+          exe_wrapper = ['wine']
+          [host_machine]
+          system = 'windows'
+          cpu_family = 'x86'
+          cpu = 'i686'
+          endian = 'little'
+          EOF
+          else
+            cat <<EOF > cross-64.txt
+          [binaries]
+          c = ['ccache', 'arm64ec-w64-mingw32-clang']
+          cpp = ['ccache', 'arm64ec-w64-mingw32-clang++']
+          ar = 'llvm-ar'
+          strip = 'llvm-strip'
+          windres = 'arm64ec-w64-mingw32-windres'
+          widl = 'arm64ec-w64-mingw32-widl'
+          pkg-config = 'pkg-config'
+          [host_machine]
+          system = 'windows'
+          cpu_family = 'aarch64'
+          cpu = 'aarch64'
+          endian = 'little'
+          EOF
+            cat <<EOF > cross-x86.txt
+          [binaries]
+          c = ['ccache', 'i686-w64-mingw32-clang']
+          cpp = ['ccache', 'i686-w64-mingw32-clang++']
+          ar = 'llvm-ar'
+          strip = 'llvm-strip'
+          windres = 'i686-w64-mingw32-windres'
+          widl = 'i686-w64-mingw32-widl'
+          pkg-config = 'pkg-config'
+          [host_machine]
+          system = 'windows'
+          cpu_family = 'x86'
+          cpu = 'i686'
+          endian = 'little'
+          EOF
+          fi
+          cd src
+          meson setup build-64 --cross-file ../cross-64.txt -Dbuildtype=release -Dstrip=true
+          ninja -C build-64 -j$(nproc)
+          meson setup build-x86 --cross-file ../cross-x86.txt -Dbuildtype=release -Dstrip=true
+          ninja -C build-x86 -j$(nproc)
+
+      - name: Package
+        env:
+          FLAVOR: ${{ matrix.flavor }}
+        run: |
+          set -euo pipefail
+          read -r tag distance version < <(bash tools/linux-nightly/version.sh src 'v[0-9]*' v)
+          mkdir -p stage/system32 stage/syswow64
+          for n in d3d12 d3d12core; do
+            find src/build-64 -name "$n.dll" -exec cp -L {} stage/system32/ \;
+            find src/build-x86 -name "$n.dll" -exec cp -L {} stage/syswow64/ \;
+          done
+          llvm-strip --strip-all stage/system32/*.dll stage/syswow64/*.dll
+          since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
+          if [ "$FLAVOR" = standard ]; then
+            id=vkd3d-proton; vname="DD-$version-nightly"; what="VKD3D-Proton master"
+          else
+            id=vkd3d-proton-arm64ec; vname="DD-$version-arm64ec-nightly"; what="VKD3D-Proton master ARM64EC"
+          fi
+          bash tools/linux-nightly/pack.sh "$id" stage out "DD-$id-$version-nightly.wcp" "$vname" \
+            "$what, $since (${COMMIT:0:8}). Upstream: Hans-Kristian Arntzen." \
+            "$COMMIT" "$tag" "$distance" "$(git -C src log -1 --format=%s)"
+
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-nightly-vkd3d-${{ matrix.flavor }}
+          path: out/
+          if-no-files-found: error
+
+  fex:
+    needs: plan
+    if: ${{ needs.plan.outputs.fex != '' }}
+    name: FEX
+    # 22.04 = glibc 2.35 for the cross toolchain, so the unixlibs need nothing newer than the glibc
+    # every current Linux rootfs has.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      COMMIT: ${{ needs.plan.outputs.fex }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates curl xz-utils jq git zip file \
+            build-essential python3 pkg-config cmake zstd ninja-build wget \
+            g++-aarch64-linux-gnu binutils-aarch64-linux-gnu ccache
+
+      - name: Cache LLVM-MinGW
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          # In $HOME, not /opt: the cache restores as the runner user, who cannot write /opt.
+          path: ~/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_TAG }}-ubuntu22
+
+      - name: Setup LLVM-MinGW
+        run: |
+          if [ ! -x ~/llvm-mingw/bin/clang ]; then
+            wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
+            mkdir -p ~/llvm-mingw && tar -C ~/llvm-mingw --strip-components=1 -xJf llvm.tar.xz
+          fi
+          sudo ln -sfn ~/llvm-mingw /opt/llvm-mingw
+          echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-fex-${{ env.COMMIT }}
+          restore-keys: ccache-fex-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
+
+      - name: Clone FEX
+        run: bash tools/linux-nightly/clone.sh https://github.com/FEX-Emu/FEX.git source "$COMMIT"
+
+      - name: Build the DLLs (arm64ec + wow64)
+        run: |
+          set -euo pipefail
+          cd source
+          build_arch() {
+            local triple="$1" dest="$2" dir="build-$1"
+            rm -rf "$dir" && mkdir "$dir" && cd "$dir"
+            cmake -G Ninja -Wno-dev \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=../Data/CMake/toolchain_mingw.cmake \
+              -DMINGW_TRIPLE="${triple}-w64-mingw32" \
+              -DCMAKE_INSTALL_PREFIX=/usr \
+              -DCMAKE_INSTALL_LIBDIR=/usr/lib/wine/aarch64-windows \
+              -DENABLE_JEMALLOC_GLIBC_ALLOC=False \
+              -DENABLE_LTO=False -DENABLE_ASSERTIONS=False -DBUILD_TESTING=False \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              ..
+            ninja -j$(nproc)
+            DESTDIR="$dest" ninja install
+            cd ..
+          }
+          build_arch arm64ec "$GITHUB_WORKSPACE/stage-ec"
+          build_arch aarch64 "$GITHUB_WORKSPACE/stage-wow"
+
+      - name: Build the unixlibs (aarch64 glibc)
+        run: |
+          set -euo pipefail
+          [ -f source/Source/Windows/UnixLib/FEXUnixLib.cpp ] || { echo "::error::no FEX unixlib source"; exit 1; }
+          cmake -S source/Source/Windows/UnixLib -B build-unix -G Ninja -Wno-dev \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib/wine/aarch64-unix
+          ninja -C build-unix
+          DESTDIR="$GITHUB_WORKSPACE/stage-unix" ninja -C build-unix install
+
+      - name: Stage and verify
+        run: |
+          set -euo pipefail
+          WIN=stage/aarch64-windows UNIX=stage/aarch64-unix
+          mkdir -p "$WIN" "$UNIX"
+          cp "$(find stage-ec -type f -name '*.dll' | head -n1)" "$WIN/libarm64ecfex.dll"
+          cp "$(find stage-wow -type f -name '*.dll' | head -n1)" "$WIN/libwow64fex.dll"
+          llvm-strip --strip-all "$WIN"/*.dll
+          for n in libarm64ecfex libwow64fex; do
+            cp "$(find stage-unix -type f -name "$n.so" | head -n1)" "$UNIX/$n.so"
+          done
+          aarch64-linux-gnu-strip --strip-unneeded "$UNIX"/*.so
+
+          # libwow64fex.dll is plain ARM64. libarm64ecfex.dll is ARM64EC, whose header carries the
+          # x86-64 machine type by design; its CHPE metadata is what makes it ARM64EC.
+          file "$WIN/libwow64fex.dll" | grep -q 'PE32+ executable.*Aarch64' \
+            || { echo "::error::libwow64fex.dll is not an ARM64 PE DLL"; exit 1; }
+          loadcfg=$(llvm-readobj --coff-load-config "$WIN/libarm64ecfex.dll")
+          grep -q 'CHPEMetadata' <<<"$loadcfg" || { echo "::error::libarm64ecfex.dll has no ARM64EC (CHPE) metadata"; exit 1; }
+          for f in "$UNIX"/*.so; do
+            file "$f" | grep -q 'ELF 64-bit LSB shared object, ARM aarch64' || { echo "::error::$f is not an aarch64 ELF shared object"; exit 1; }
+            needed=$(aarch64-linux-gnu-readelf -d "$f" | grep NEEDED || true)
+            echo "$needed"
+            grep -q '\[libc\.so\.6\]' <<<"$needed" || { echo "::error::$f does not link glibc"; exit 1; }
+            if grep -q '\[libc\.so\]' <<<"$needed"; then echo "::error::$f links bionic libc"; exit 1; fi
+            echo "highest glibc symbol version: $(aarch64-linux-gnu-readelf -V "$f" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)"
+            syms=$(aarch64-linux-gnu-readelf --dyn-syms -W "$f")
+            grep -q '__wine_unix_call_funcs' <<<"$syms" || { echo "::error::$f does not export __wine_unix_call_funcs"; exit 1; }
+          done
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          read -r tag distance version < <(bash tools/linux-nightly/version.sh source 'FEX-[0-9]*' FEX-)
+          since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
+          bash tools/linux-nightly/pack.sh fex stage out "DD-FEXCore-$version-nightly.wcp" "DD-$version-nightly" \
+            "FEX main, $since (${COMMIT:0:9}): 2 DLLs + 2 glibc unixlibs, one matched build. Upstream: FEX-Emu." \
+            "$COMMIT" "$tag" "$distance" "$(git -C source log -1 --format=%s)"
+
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-nightly-fex
+          path: out/
+          if-no-files-found: error
+
+  publish:
+    needs: [plan, dxvk, dxvk-arm64ec, vkd3d, fex]
+    if: ${{ !cancelled() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-nightly-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Publish to linux-nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ needs.plan.outputs.plan }}
+          PUBLISH: ${{ github.ref == 'refs/heads/main' && '--publish' || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          ls -la artifacts
+          python3 tools/linux-nightly/publish.py --repo "$GITHUB_REPOSITORY" --tag linux-nightly \
+            --artifacts artifacts --plan "$PLAN" --target "$GITHUB_SHA" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --notes-out notes.md $PUBLISH
+          { [ -n "$PUBLISH" ] && echo "## Published to linux-nightly" || echo "## Not published (not main); notes it would publish:"
+            echo; cat notes.md; } >> "$GITHUB_STEP_SUMMARY"

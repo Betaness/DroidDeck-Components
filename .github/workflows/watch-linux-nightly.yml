@@ -1,0 +1,67 @@
+name: Watch Linux components upstream
+
+# Every hour: reads the newest commit of DXVK, VKD3D-Proton and FEX and compares it with the commit
+# each component last ran at (state.json on the linux-nightly release). Starts linux-nightly.yml
+# with only the components that moved. With no release yet, it starts all three, which creates it.
+# Runs at :17, not :00: GitHub delays and drops scheduled runs at the top of the hour most.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: watch-linux-nightly
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    if: ${{ github.repository == 'Droid-Deck/DroidDeck-Components' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Compare upstream with the last build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          busy=$(gh run list -R "$REPO" -w linux-nightly.yml --json status \
+            --jq '[.[] | select(.status != "completed")] | length')
+          if [ "$busy" -gt 0 ]; then
+            echo "A linux-nightly run is still going; checking again next hour."
+            exit 0
+          fi
+
+          if gh release download linux-nightly -R "$REPO" -p state.json -O state.json 2>/dev/null; then
+            echo "state.json from linux-nightly:"; jq -c .components state.json
+          else
+            echo "No linux-nightly state yet: every component counts as changed."
+            echo '{}' > state.json
+          fi
+
+          changed=""
+          for pair in dxvk:https://github.com/doitsujin/dxvk vkd3d:https://github.com/HansKristian-Work/vkd3d-proton fex:https://github.com/FEX-Emu/FEX; do
+            c=${pair%%:*} url=${pair#*:}
+            head=$(git ls-remote "$url" HEAD | cut -f1)
+            if [ -z "$head" ]; then echo "::warning::could not read $url HEAD"; continue; fi
+            last=$(jq -r --arg c "$c" '.components[$c].commit // ""' state.json)
+            if [ "$head" != "$last" ]; then
+              echo "$c: ${last:0:8} -> ${head:0:8}"
+              changed="$changed $c"
+            else
+              echo "$c: unchanged at ${head:0:8}"
+            fi
+          done
+
+          changed=${changed# }
+          if [ -z "$changed" ]; then
+            echo "Nothing changed."
+            exit 0
+          fi
+          gh workflow run linux-nightly.yml -R "$REPO" --ref main -f components="$changed"
+          echo "Started linux-nightly for: $changed" | tee -a "$GITHUB_STEP_SUMMARY"
