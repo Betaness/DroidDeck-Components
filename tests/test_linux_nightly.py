@@ -28,15 +28,15 @@ def built(pid, comp, file, version, commit, distance=21):
 class MergeTest(unittest.TestCase):
     def test_built_package_replaces_entry_and_component_commit_moves(self):
         state = {"components": {"dxvk": {"commit": DXVK_OLD}},
-                 "packages": {"dxvk": built("dxvk", "dxvk", "dxvk-3.1.1+20-linux.wcp", "3.1.1+20", DXVK_OLD, 20)}}
-        metas = {"dxvk": built("dxvk", "dxvk", "dxvk-3.1.1+21-linux.wcp", "3.1.1+21", DXVK_NEW)}
+                 "packages": {"dxvk": built("dxvk", "dxvk", "DD-dxvk-3.1.1+20-nightly.wcp", "DD-3.1.1+20-nightly", DXVK_OLD, 20)}}
+        metas = {"dxvk": built("dxvk", "dxvk", "DD-dxvk-3.1.1+21-nightly.wcp", "DD-3.1.1+21-nightly", DXVK_NEW)}
         ran = publish.merge(state, {"dxvk": DXVK_NEW}, metas, NOW, RUN)
         self.assertEqual(ran, [("dxvk", DXVK_OLD, DXVK_NEW)])
-        self.assertEqual(state["packages"]["dxvk"]["file"], "dxvk-3.1.1+21-linux.wcp")
+        self.assertEqual(state["packages"]["dxvk"]["file"], "DD-dxvk-3.1.1+21-nightly.wcp")
         self.assertEqual(state["components"]["dxvk"]["commit"], DXVK_NEW)
 
     def test_gplasync_kept_keeps_previous_file_with_note(self):
-        prev = built("dxvk-gplasync", "dxvk", "dxvk-gplasync-3.1.1+20-linux.wcp", "gplasync-3.1.1+20", DXVK_OLD, 20)
+        prev = built("dxvk-gplasync", "dxvk", "DD-dxvk-gplasync-3.1.1+20-nightly.wcp", "DD-3.1.1+20-gplasync-nightly", DXVK_OLD, 20)
         state = {"packages": {"dxvk-gplasync": prev}}
         metas = {"dxvk-gplasync": {"id": "dxvk-gplasync", "comp": "dxvk", "status": "kept",
                                    "reason": "the gplasync patch does not apply to this DXVK commit"}}
@@ -55,9 +55,9 @@ class MergeTest(unittest.TestCase):
         self.assertIn("the build failed", state["packages"]["fex"]["note"])
 
     def test_untouched_components_are_left_alone(self):
-        vk = built("vkd3d-proton", "vkd3d", "vkd3d-proton-3.0.1+5-linux.wcp", "3.0.1+5", "d" * 40, 5)
+        vk = built("vkd3d-proton", "vkd3d", "DD-vkd3d-proton-3.0.1+5-nightly.wcp", "DD-3.0.1+5-nightly", "d" * 40, 5)
         state = {"components": {"vkd3d": {"commit": "d" * 40}}, "packages": {"vkd3d-proton": vk}}
-        publish.merge(state, {"fex": FEX}, {"fex": built("fex", "fex", "FEXCore-2610+54-linux.wcp", "2610+54", FEX)}, NOW, RUN)
+        publish.merge(state, {"fex": FEX}, {"fex": built("fex", "fex", "DD-FEXCore-2610+54-nightly.wcp", "DD-2610+54-nightly", FEX)}, NOW, RUN)
         self.assertEqual(state["packages"]["vkd3d-proton"], vk)
         self.assertEqual(state["components"]["vkd3d"]["commit"], "d" * 40)
 
@@ -65,12 +65,12 @@ class MergeTest(unittest.TestCase):
 class NotesTest(unittest.TestCase):
     def test_notes_list_packages_with_commit_links_and_escape_pipes(self):
         state = {}
-        metas = {"dxvk": built("dxvk", "dxvk", "dxvk-3.1.1+21-linux.wcp", "3.1.1+21", DXVK_NEW),
-                 "dxvk-arm64ec": built("dxvk-arm64ec", "dxvk", "dxvk-arm64ec-3.1.1-linux.wcp", "arm64ec-3.1.1", DXVK_NEW, 0)}
+        metas = {"dxvk": built("dxvk", "dxvk", "DD-dxvk-3.1.1+21-nightly.wcp", "DD-3.1.1+21-nightly", DXVK_NEW),
+                 "dxvk-arm64ec": built("dxvk-arm64ec", "dxvk", "DD-dxvk-arm64ec-3.1.1-nightly.wcp", "DD-3.1.1-arm64ec-nightly", DXVK_NEW, 0)}
         ran = publish.merge(state, {"dxvk": DXVK_NEW}, metas, NOW, RUN)
         text = publish.notes(state, ran)
         self.assertIn(f"https://github.com/doitsujin/dxvk/commit/{DXVK_NEW}", text)
-        self.assertIn("`dxvk-3.1.1+21-linux.wcp`", text)
+        self.assertIn("`DD-dxvk-3.1.1+21-nightly.wcp`", text)
         self.assertIn("21 commits past v3.1.1", text)
         self.assertIn("a \\| b", text)
         self.assertIn("**DXVK gplasync:** Not updated", text)

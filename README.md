@@ -52,10 +52,11 @@ all on one release that is kept up to date.
 
 | Release | Contents |
 | --- | --- |
-| `linux-nightly` | `dxvk-`, `dxvk-arm64ec-`, `dxvk-gplasync-`, `vkd3d-proton-`, `vkd3d-proton-arm64ec-` and `FEXCore-<version>-linux.wcp`, and `state.json` |
+| `linux-nightly` | `DD-dxvk-`, `DD-dxvk-arm64ec-`, `DD-dxvk-gplasync-`, `DD-vkd3d-proton-`, `DD-vkd3d-proton-arm64ec-` and `DD-FEXCore-<version>-nightly.wcp`, and `state.json` |
 
-`<version>` is the last upstream tag (`3.1.1`) or the commits past it (`3.1.1+21`), and the
-profile's `versionName` carries the same. Packages are laid out as a Proton tree under
+`<version>` is the last upstream tag (`3.1.1`) or the commits past it (`3.1.1+151`). The profile's
+`versionName` follows the stable `-Linux` packages: `DD-3.1.1+151-nightly`,
+`DD-3.1.1+151-arm64ec-nightly`, `DD-3.1.1+151-gplasync-nightly`, `DD-2610+54-nightly`. Packages are laid out as a Proton tree under
 `files/lib/wine/` with profile type `DXVK-Linux`, `VKD3D-Linux` or `FEXCore-Linux`.
 
 - `.github/workflows/watch-linux-nightly.yml`: every hour compares upstream with `state.json` and

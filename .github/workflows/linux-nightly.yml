@@ -11,8 +11,9 @@ name: Linux components nightly
 # profile type DXVK-Linux / VKD3D-Linux / FEXCore-Linux. FEX's unixlibs are built against glibc
 # (the Nightlies ones are bionic, for Android), as in its fexcore-linux-stable workflow.
 #
-# Names: <package>-<version>-linux.wcp, where version is the last upstream tag ("3.1.1") or the
-# commits past it ("3.1.1+21"); profile versionName carries the same version.
+# Names: DD-<package>-<version>-nightly.wcp, where version is the last upstream tag ("3.1.1") or the
+# commits past it ("3.1.1+151"). versionName follows the stable -Linux packages of Nightlies
+# (version, flavor, suffix): DD-3.1.1+151-nightly, DD-3.1.1+151-arm64ec-nightly, DD-2610+54-nightly.
 # If the gplasync patch no longer applies or builds on DXVK master, the previous gplasync file stays.
 #
 # Only runs on main publish. Runs on other branches build, then show the notes they would publish.
@@ -168,10 +169,10 @@ jobs:
           cp -r dxvk-built/dxvk-master/x32 stage/syswow64
           since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
           if [ "$ID" = dxvk ]; then
-            name="dxvk-$version-linux.wcp"; vname="$version"
+            name="DD-dxvk-$version-nightly.wcp"; vname="DD-$version-nightly"
             desc="DXVK master, $since (${COMMIT:0:8}). Upstream: Philip Rebohle."
           else
-            name="dxvk-gplasync-$version-linux.wcp"; vname="gplasync-$version"
+            name="DD-dxvk-gplasync-$version-nightly.wcp"; vname="DD-$version-gplasync-nightly"
             desc="DXVK master + gplasync, $since (${COMMIT:0:8}). Upstream: Philip Rebohle, gplasync: Ph42oN."
           fi
           bash tools/linux-nightly/pack.sh "$ID" stage out "$name" "$vname" "$desc" "$COMMIT" "$tag" "$distance" \
@@ -323,7 +324,7 @@ jobs:
           copy_dll build-x86 stage/syswow64
           llvm-strip --strip-all stage/system32/*.dll stage/syswow64/*.dll
           since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
-          bash tools/linux-nightly/pack.sh dxvk-arm64ec stage out "dxvk-arm64ec-$version-linux.wcp" "arm64ec-$version" \
+          bash tools/linux-nightly/pack.sh dxvk-arm64ec stage out "DD-dxvk-arm64ec-$version-nightly.wcp" "DD-$version-arm64ec-nightly" \
             "DXVK master ARM64EC, $since (${COMMIT:0:8}). Upstream: Philip Rebohle." \
             "$COMMIT" "$tag" "$distance" "$(git -C dxvk log -1 --format=%s)"
 
@@ -505,11 +506,11 @@ jobs:
           llvm-strip --strip-all stage/system32/*.dll stage/syswow64/*.dll
           since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
           if [ "$FLAVOR" = standard ]; then
-            id=vkd3d-proton; vname="$version"; what="VKD3D-Proton master"
+            id=vkd3d-proton; vname="DD-$version-nightly"; what="VKD3D-Proton master"
           else
-            id=vkd3d-proton-arm64ec; vname="arm64ec-$version"; what="VKD3D-Proton master ARM64EC"
+            id=vkd3d-proton-arm64ec; vname="DD-$version-arm64ec-nightly"; what="VKD3D-Proton master ARM64EC"
           fi
-          bash tools/linux-nightly/pack.sh "$id" stage out "$id-$version-linux.wcp" "$vname" \
+          bash tools/linux-nightly/pack.sh "$id" stage out "DD-$id-$version-nightly.wcp" "$vname" \
             "$what, $since (${COMMIT:0:8}). Upstream: Hans-Kristian Arntzen." \
             "$COMMIT" "$tag" "$distance" "$(git -C src log -1 --format=%s)"
 
@@ -650,7 +651,7 @@ jobs:
           set -euo pipefail
           read -r tag distance version < <(bash tools/linux-nightly/version.sh source 'FEX-[0-9]*' FEX-)
           since=$([ "$distance" -eq 0 ] && echo "$tag" || echo "$distance commits past $tag")
-          bash tools/linux-nightly/pack.sh fex stage out "FEXCore-$version-linux.wcp" "$version" \
+          bash tools/linux-nightly/pack.sh fex stage out "DD-FEXCore-$version-nightly.wcp" "DD-$version-nightly" \
             "FEX main, $since (${COMMIT:0:9}): 2 DLLs + 2 glibc unixlibs, one matched build. Upstream: FEX-Emu." \
             "$COMMIT" "$tag" "$distance" "$(git -C source log -1 --format=%s)"
 
