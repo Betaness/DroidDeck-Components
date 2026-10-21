@@ -45,6 +45,27 @@ Java classes in the apk load. Users download it on request and can uninstall it.
 publishes it under a new tag; a published tag is never replaced. The apk pins one release by tag,
 sha256 and size in `tools/vr/module/release.env` of the app repository.
 
+## Linux components nightly
+
+Nightly DXVK, VKD3D-Proton and FEX for the Linux Steam client, whose games run on glibc Protons,
+all on one release that is kept up to date.
+
+| Release | Contents |
+| --- | --- |
+| `linux-nightly` | `dxvk-`, `dxvk-arm64ec-`, `dxvk-gplasync-`, `vkd3d-proton-`, `vkd3d-proton-arm64ec-` and `FEXCore-<version>-linux.wcp`, and `state.json` |
+
+`<version>` is the last upstream tag (`3.1.1`) or the commits past it (`3.1.1+21`), and the
+profile's `versionName` carries the same. Packages are laid out as a Proton tree under
+`files/lib/wine/` with profile type `DXVK-Linux`, `VKD3D-Linux` or `FEXCore-Linux`.
+
+- `.github/workflows/watch-linux-nightly.yml`: every hour compares upstream with `state.json` and
+  starts the build for the components that moved.
+- `.github/workflows/linux-nightly.yml`: builds those components with the steps of
+  [The412Banner/Nightlies](https://github.com/The412Banner/Nightlies)' all-in-one nightly (FEX's
+  unixlibs against glibc), replaces their files on the release and rewrites its notes. If the
+  gplasync patch no longer applies or builds on DXVK master, the previous gplasync file stays.
+  Only `main` publishes. Helpers in `tools/linux-nightly/`.
+
 ## License
 
 GPL-3.0, the same as DroidDeck. See [LICENSE](LICENSE). The patch series modifies Wine, which is
