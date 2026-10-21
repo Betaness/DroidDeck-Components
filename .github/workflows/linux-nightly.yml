@@ -89,14 +89,46 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y mingw-w64 wget git xz-utils python3 meson ninja-build build-essential unzip zip patch jq zstd file
+          sudo apt-get install -y mingw-w64 wget git xz-utils python3 meson ninja-build build-essential unzip zip patch jq zstd file ccache
+
+      - name: Week (glslang cache key)
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache glslang
+        id: cache-glslang
+        uses: actions/cache@v4
+        with:
+          path: glslang
+          key: glslang-master-tot-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: glslang-master-tot-${{ runner.os }}-
 
       - name: Setup glslang
         run: |
-          wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
-          unzip -qo glslang-master-linux-Release.zip -d glslang
+          if [ "${{ steps.cache-glslang.outputs.cache-hit }}" != true ]; then
+            wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
+            unzip -qo glslang-master-linux-Release.zip -d glslang
+          fi
           echo "$PWD/glslang/bin" >> "$GITHUB_PATH"
 
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-dxvk-${{ matrix.flavor }}-${{ env.COMMIT }}
+          restore-keys: ccache-dxvk-${{ matrix.flavor }}-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
+          # package-release.sh picks the MinGW compilers from PATH: ccache symlinks shadow them.
+          mkdir -p ~/ccache-bin
+          for c in x86_64-w64-mingw32-gcc x86_64-w64-mingw32-g++ i686-w64-mingw32-gcc i686-w64-mingw32-g++; do
+            ln -sf "$(which ccache)" ~/ccache-bin/$c
+          done
+          echo "$HOME/ccache-bin" >> "$GITHUB_PATH"
       - name: Clone DXVK
         run: bash tools/linux-nightly/clone.sh https://github.com/doitsujin/dxvk.git dxvk "$COMMIT"
 
@@ -154,6 +186,10 @@ jobs:
           jq -n --arg id "$ID" --arg r "$REASON" '{id: $id, comp: "dxvk", status: "kept", reason: $r}' > "out/$ID.json"
           echo "::warning::$REASON (DXVK ${COMMIT:0:8}); the previous gplasync build stays"
 
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-nightly-${{ env.ID }}
@@ -177,20 +213,57 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ca-certificates curl xz-utils jq git build-essential \
-            python3 pkg-config zstd meson ninja-build wget unzip zip file
+            python3 pkg-config zstd meson ninja-build wget unzip zip file ccache
+
+      - name: Week (glslang cache key)
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache glslang
+        id: cache-glslang
+        uses: actions/cache@v4
+        with:
+          path: glslang
+          key: glslang-master-tot-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: glslang-master-tot-${{ runner.os }}-
 
       - name: Setup glslang
         run: |
-          wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
-          unzip -qo glslang-master-linux-Release.zip -d glslang
+          if [ "${{ steps.cache-glslang.outputs.cache-hit }}" != true ]; then
+            wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
+            unzip -qo glslang-master-linux-Release.zip -d glslang
+          fi
           echo "$PWD/glslang/bin" >> "$GITHUB_PATH"
+
+      - name: Cache LLVM-MinGW
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          # In $HOME, not /opt: the cache restores as the runner user, who cannot write /opt.
+          path: ~/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_TAG }}-ubuntu22
 
       - name: Setup LLVM-MinGW
         run: |
-          wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
-          sudo mkdir -p /opt/llvm-mingw
-          sudo tar -C /opt/llvm-mingw --strip-components=1 -xJf llvm.tar.xz
+          if [ ! -x ~/llvm-mingw/bin/clang ]; then
+            wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
+            mkdir -p ~/llvm-mingw && tar -C ~/llvm-mingw --strip-components=1 -xJf llvm.tar.xz
+          fi
+          sudo ln -sfn ~/llvm-mingw /opt/llvm-mingw
           echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-dxvk-arm64ec-${{ env.COMMIT }}
+          restore-keys: ccache-dxvk-arm64ec-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
 
       - name: Clone DXVK
         run: bash tools/linux-nightly/clone.sh https://github.com/doitsujin/dxvk.git dxvk "$COMMIT"
@@ -200,8 +273,8 @@ jobs:
           set -euo pipefail
           cat <<EOF > arm64ec.txt
           [binaries]
-          c = 'arm64ec-w64-mingw32-clang'
-          cpp = 'arm64ec-w64-mingw32-clang++'
+          c = ['ccache', 'arm64ec-w64-mingw32-clang']
+          cpp = ['ccache', 'arm64ec-w64-mingw32-clang++']
           ar = 'llvm-ar'
           strip = 'llvm-strip'
           windres = 'arm64ec-w64-mingw32-windres'
@@ -215,8 +288,8 @@ jobs:
           EOF
           cat <<EOF > x86.txt
           [binaries]
-          c = 'i686-w64-mingw32-clang'
-          cpp = 'i686-w64-mingw32-clang++'
+          c = ['ccache', 'i686-w64-mingw32-clang']
+          cpp = ['ccache', 'i686-w64-mingw32-clang++']
           ar = 'llvm-ar'
           strip = 'llvm-strip'
           windres = 'i686-w64-mingw32-windres'
@@ -254,6 +327,10 @@ jobs:
             "DXVK master ARM64EC, $since (${COMMIT:0:8}). Upstream: Philip Rebohle." \
             "$COMMIT" "$tag" "$distance" "$(git -C dxvk log -1 --format=%s)"
 
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-nightly-dxvk-arm64ec
@@ -283,21 +360,57 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl xz-utils jq git zip \
             build-essential python3 pkg-config zstd \
-            meson ninja-build wget unzip file
+            meson ninja-build wget unzip file ccache
+
+      - name: Week (glslang cache key)
+        id: week
+        run: echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache glslang
+        id: cache-glslang
+        uses: actions/cache@v4
+        with:
+          path: glslang
+          key: glslang-master-tot-${{ runner.os }}-${{ steps.week.outputs.week }}
+          restore-keys: glslang-master-tot-${{ runner.os }}-
 
       - name: Setup glslang
         run: |
-          wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
-          unzip -q glslang-master-linux-Release.zip -d glslang
+          if [ "${{ steps.cache-glslang.outputs.cache-hit }}" != true ]; then
+            wget -q https://github.com/KhronosGroup/glslang/releases/download/master-tot/glslang-master-linux-Release.zip
+            unzip -qo glslang-master-linux-Release.zip -d glslang
+          fi
           echo "$PWD/glslang/bin" >> "$GITHUB_PATH"
+
+      - name: Cache LLVM-MinGW
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          # In $HOME, not /opt: the cache restores as the runner user, who cannot write /opt.
+          path: ~/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_TAG }}-ubuntu22
 
       - name: Setup LLVM-MinGW
         run: |
-          TOOLCHAIN_DIR="/opt/llvm-mingw"
-          wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
-          sudo rm -rf "$TOOLCHAIN_DIR" && sudo mkdir -p "$TOOLCHAIN_DIR"
-          sudo tar -C "$TOOLCHAIN_DIR" --strip-components=1 -xJf llvm.tar.xz
-          echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
+          if [ ! -x ~/llvm-mingw/bin/clang ]; then
+            wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
+            mkdir -p ~/llvm-mingw && tar -C ~/llvm-mingw --strip-components=1 -xJf llvm.tar.xz
+          fi
+          sudo ln -sfn ~/llvm-mingw /opt/llvm-mingw
+          echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-vkd3d-${{ matrix.flavor }}-${{ env.COMMIT }}
+          restore-keys: ccache-vkd3d-${{ matrix.flavor }}-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
 
       - name: Clone VKD3D-Proton
         run: bash tools/linux-nightly/clone.sh https://github.com/HansKristian-Work/vkd3d-proton src "$COMMIT"
@@ -310,8 +423,8 @@ jobs:
           if [ "$FLAVOR" = standard ]; then
             cat <<EOF > cross-64.txt
           [binaries]
-          c = '/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang'
-          cpp = '/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang++'
+          c = ['ccache', '/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang']
+          cpp = ['ccache', '/opt/llvm-mingw/bin/x86_64-w64-mingw32-clang++']
           ar = '/opt/llvm-mingw/bin/llvm-ar'
           strip = '/opt/llvm-mingw/bin/llvm-strip'
           windres = '/opt/llvm-mingw/bin/x86_64-w64-mingw32-windres'
@@ -326,8 +439,8 @@ jobs:
           EOF
             cat <<EOF > cross-x86.txt
           [binaries]
-          c = '/opt/llvm-mingw/bin/i686-w64-mingw32-clang'
-          cpp = '/opt/llvm-mingw/bin/i686-w64-mingw32-clang++'
+          c = ['ccache', '/opt/llvm-mingw/bin/i686-w64-mingw32-clang']
+          cpp = ['ccache', '/opt/llvm-mingw/bin/i686-w64-mingw32-clang++']
           ar = '/opt/llvm-mingw/bin/llvm-ar'
           strip = '/opt/llvm-mingw/bin/llvm-strip'
           windres = '/opt/llvm-mingw/bin/i686-w64-mingw32-windres'
@@ -343,8 +456,8 @@ jobs:
           else
             cat <<EOF > cross-64.txt
           [binaries]
-          c = 'arm64ec-w64-mingw32-clang'
-          cpp = 'arm64ec-w64-mingw32-clang++'
+          c = ['ccache', 'arm64ec-w64-mingw32-clang']
+          cpp = ['ccache', 'arm64ec-w64-mingw32-clang++']
           ar = 'llvm-ar'
           strip = 'llvm-strip'
           windres = 'arm64ec-w64-mingw32-windres'
@@ -358,8 +471,8 @@ jobs:
           EOF
             cat <<EOF > cross-x86.txt
           [binaries]
-          c = 'i686-w64-mingw32-clang'
-          cpp = 'i686-w64-mingw32-clang++'
+          c = ['ccache', 'i686-w64-mingw32-clang']
+          cpp = ['ccache', 'i686-w64-mingw32-clang++']
           ar = 'llvm-ar'
           strip = 'llvm-strip'
           windres = 'i686-w64-mingw32-windres'
@@ -400,6 +513,10 @@ jobs:
             "$what, $since (${COMMIT:0:8}). Upstream: Hans-Kristian Arntzen." \
             "$COMMIT" "$tag" "$distance" "$(git -C src log -1 --format=%s)"
 
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
+
       - uses: actions/upload-artifact@v4
         with:
           name: linux-nightly-vkd3d-${{ matrix.flavor }}
@@ -427,15 +544,37 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             ca-certificates curl xz-utils jq git zip file \
             build-essential python3 pkg-config cmake zstd ninja-build wget \
-            g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
+            g++-aarch64-linux-gnu binutils-aarch64-linux-gnu ccache
+
+      - name: Cache LLVM-MinGW
+        id: cache-llvm
+        uses: actions/cache@v4
+        with:
+          # In $HOME, not /opt: the cache restores as the runner user, who cannot write /opt.
+          path: ~/llvm-mingw
+          key: llvm-mingw-${{ env.LLVM_MINGW_TAG }}-ubuntu22
 
       - name: Setup LLVM-MinGW
         run: |
-          TOOLCHAIN_DIR="/opt/llvm-mingw"
-          wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
-          sudo rm -rf "$TOOLCHAIN_DIR" && sudo mkdir -p "$TOOLCHAIN_DIR"
-          sudo tar -C "$TOOLCHAIN_DIR" --strip-components=1 -xJf llvm.tar.xz
-          echo "$TOOLCHAIN_DIR/bin" >> "$GITHUB_PATH"
+          if [ ! -x ~/llvm-mingw/bin/clang ]; then
+            wget -q "https://github.com/mstorsjo/llvm-mingw/releases/download/$LLVM_MINGW_TAG/llvm-mingw-$LLVM_MINGW_TAG-ucrt-ubuntu-22.04-x86_64.tar.xz" -O llvm.tar.xz
+            mkdir -p ~/llvm-mingw && tar -C ~/llvm-mingw --strip-components=1 -xJf llvm.tar.xz
+          fi
+          sudo ln -sfn ~/llvm-mingw /opt/llvm-mingw
+          echo "/opt/llvm-mingw/bin" >> "$GITHUB_PATH"
+
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          # Keyed to the upstream commit; a new commit restores the newest older cache.
+          key: ccache-fex-${{ env.COMMIT }}
+          restore-keys: ccache-fex-
+
+      - name: Setup ccache
+        run: |
+          ccache --max-size=1G
+          ccache --zero-stats
 
       - name: Clone FEX
         run: bash tools/linux-nightly/clone.sh https://github.com/FEX-Emu/FEX.git source "$COMMIT"
@@ -455,6 +594,7 @@ jobs:
               -DCMAKE_INSTALL_LIBDIR=/usr/lib/wine/aarch64-windows \
               -DENABLE_JEMALLOC_GLIBC_ALLOC=False \
               -DENABLE_LTO=False -DENABLE_ASSERTIONS=False -DBUILD_TESTING=False \
+              -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
               ..
             ninja -j$(nproc)
             DESTDIR="$dest" ninja install
@@ -470,7 +610,7 @@ jobs:
           cmake -S source/Source/Windows/UnixLib -B build-unix -G Ninja -Wno-dev \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+            -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib/wine/aarch64-unix
           ninja -C build-unix
           DESTDIR="$GITHUB_WORKSPACE/stage-unix" ninja -C build-unix install
@@ -513,6 +653,10 @@ jobs:
           bash tools/linux-nightly/pack.sh fex stage out "FEXCore-$version-linux.wcp" "$version" \
             "FEX main, $since (${COMMIT:0:9}): 2 DLLs + 2 glibc unixlibs, one matched build. Upstream: FEX-Emu." \
             "$COMMIT" "$tag" "$distance" "$(git -C source log -1 --format=%s)"
+
+      - name: ccache stats
+        if: ${{ always() }}
+        run: ccache --show-stats || true
 
       - uses: actions/upload-artifact@v4
         with:
