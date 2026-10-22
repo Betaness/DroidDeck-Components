@@ -417,6 +417,150 @@ static void test_semaphore_tokens(void)
     printf("semaphore_tokens ok\n");
 }
 
+/* Anonymous semaphores that are created and closed without being used may be
+ * recycled by the semaphore pool (droiddeck-sempool); these checks hold with
+ * and without it. */
+static HANDLE new_sem(LONG initial, LONG max)
+{
+    return CreateSemaphoreExA(NULL, initial, max, NULL, 0, STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | SEMAPHORE_MODIFY_STATE);
+}
+
+static void check_fresh(HANDLE h, LONG initial, const char *what)
+{
+    LONG prev = -1, i;
+    for (i = 0; i < initial; i++) CHECK(WaitForSingleObject(h, 0) == WAIT_OBJECT_0, "%s: take %ld", what, i);
+    CHECK(WaitForSingleObject(h, 0) == WAIT_TIMEOUT, "%s: more than %ld tokens", what, initial);
+    CHECK(ReleaseSemaphore(h, 1, &prev) && prev == 0, "%s: prev %ld", what, prev);
+}
+
+static volatile LONG churn_errors;
+
+static DWORD WINAPI sem_churn_worker(void *arg)
+{
+    int i, n = (int)(INT_PTR)arg;
+    for (i = 0; i < n; i++)
+    {
+        HANDLE h = new_sem(0, 0x7fffffff);
+        if (!h) { InterlockedIncrement(&churn_errors); continue; }
+        if (i % 97 == 0 && WaitForSingleObject(h, 0) != WAIT_TIMEOUT) InterlockedIncrement(&churn_errors);
+        if (i % 89 == 0 && !ReleaseSemaphore(h, 5, NULL)) InterlockedIncrement(&churn_errors);
+        if (!CloseHandle(h)) InterlockedIncrement(&churn_errors);
+    }
+    return 0;
+}
+
+static void test_semaphore_pool(void)
+{
+    HANDLE h, h2, h3, th[4];
+    LONG prev = -1;
+    DWORD r, start, flags;
+    int i;
+
+    /* create/close churn, the Mono pattern: never used in between */
+    start = GetTickCount();
+    for (i = 0; i < 200000; i++)
+    {
+        h = new_sem(0, 0x7fffffff);
+        if (!h) { CHECK(0, "churn create %d %lu", i, GetLastError()); break; }
+        if (!CloseHandle(h)) { CHECK(0, "churn close %d %lu", i, GetLastError()); break; }
+    }
+    printf("semaphore_pool churn: %d create/close pairs in %lu ms\n", i, GetTickCount() - start);
+
+    /* a closed handle stays closed */
+    h = new_sem(0, 0x7fffffff);
+    CHECK(CloseHandle(h), "close");
+    SetLastError(0xdeadbeef);
+    CHECK(!CloseHandle(h) && GetLastError() == ERROR_INVALID_HANDLE, "double close err %lu", GetLastError());
+    SetLastError(0xdeadbeef);
+    r = WaitForSingleObject(h, 0);
+    CHECK(r == WAIT_FAILED && GetLastError() == ERROR_INVALID_HANDLE, "wait on closed %lu err %lu", r, GetLastError());
+    SetLastError(0xdeadbeef);
+    CHECK(!ReleaseSemaphore(h, 1, NULL) && GetLastError() == ERROR_INVALID_HANDLE, "release closed err %lu", GetLastError());
+    SetLastError(0xdeadbeef);
+    CHECK(!DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), &h2, 0, FALSE, DUPLICATE_SAME_ACCESS) &&
+          GetLastError() == ERROR_INVALID_HANDLE, "duplicate closed err %lu", GetLastError());
+    SetLastError(0xdeadbeef);
+    CHECK(!GetHandleInformation(h, &flags) && GetLastError() == ERROR_INVALID_HANDLE, "handle info closed err %lu", GetLastError());
+
+    /* create, wait/release, close: the count must not come back */
+    for (i = 0; i < 20000; i++)
+    {
+        h = new_sem(0, 10);
+        if (WaitForSingleObject(h, 0) != WAIT_TIMEOUT) { CHECK(0, "used sem %d came back signaled", i); CloseHandle(h); break; }
+        ReleaseSemaphore(h, 3, NULL);
+        if (WaitForSingleObject(h, 0) != WAIT_OBJECT_0) { CHECK(0, "release lost %d", i); CloseHandle(h); break; }
+        CloseHandle(h);
+    }
+    for (i = 0; i < 1000; i++)
+    {
+        h = new_sem(2, 5);
+        check_fresh(h, 2, "initial 2");
+        if (i & 1) ReleaseSemaphore(h, 2, NULL);
+        CloseHandle(h);
+    }
+    for (i = 0; i < 1000; i++)
+    {
+        h = new_sem(0, 10);
+        if (i & 1)
+        {
+            CHECK(ReleaseSemaphore(h, 0, &prev) && prev == 0, "query prev %ld", prev);
+            ReleaseSemaphore(h, 4, NULL);
+        }
+        CloseHandle(h);
+    }
+    h = new_sem(0, 10);
+    check_fresh(h, 0, "after release churn");
+    CloseHandle(h);
+
+    /* duplicated handles keep the object; the next semaphore is a new one */
+    for (i = 0; i < 1000; i++)
+    {
+        h = new_sem(0, 10);
+        CHECK(DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), &h2, 0, FALSE, DUPLICATE_SAME_ACCESS), "dup");
+        CHECK(CloseHandle(h), "close dup source");
+        h3 = new_sem(0, 10);
+        CHECK(ReleaseSemaphore(h2, 1, &prev) && prev == 0, "dup release prev %ld", prev);
+        CHECK(WaitForSingleObject(h3, 0) == WAIT_TIMEOUT, "new sem shares the duplicated object");
+        CHECK(WaitForSingleObject(h2, 0) == WAIT_OBJECT_0, "dup lost token");
+        CloseHandle(h2);
+        CloseHandle(h3);
+    }
+    for (i = 0; i < 1000; i++)
+    {
+        h = new_sem(0, 10);
+        CHECK(DuplicateHandle(GetCurrentProcess(), h, GetCurrentProcess(), &h2, 0, FALSE,
+                              DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE), "dup close source");
+        if (h != h2) CHECK(!CloseHandle(h), "source still open after DUPLICATE_CLOSE_SOURCE");
+        h3 = new_sem(0, 10);
+        CHECK(ReleaseSemaphore(h2, 2, &prev) && prev == 0, "dup2 release prev %ld", prev);
+        CHECK(WaitForSingleObject(h3, 0) == WAIT_TIMEOUT, "new sem shares the moved object");
+        CloseHandle(h2);
+        CloseHandle(h3);
+    }
+
+    /* handle flags stick to the handle, so such a handle is not recycled */
+    h = new_sem(0, 10);
+    CHECK(SetHandleInformation(h, HANDLE_FLAG_PROTECT_FROM_CLOSE, HANDLE_FLAG_PROTECT_FROM_CLOSE), "protect");
+    CHECK(!CloseHandle(h), "closed a protected handle");
+    CHECK(GetHandleInformation(h, &flags) && (flags & HANDLE_FLAG_PROTECT_FROM_CLOSE), "flags %lx", flags);
+    CHECK(SetHandleInformation(h, HANDLE_FLAG_PROTECT_FROM_CLOSE, 0), "unprotect");
+    CHECK(CloseHandle(h), "close unprotected");
+    h = new_sem(0, 10);
+    CHECK(GetHandleInformation(h, &flags) && !flags, "recycled handle flags %lx", flags);
+    CloseHandle(h);
+
+    /* several threads at once */
+    churn_errors = 0;
+    for (i = 0; i < 4; i++) th[i] = CreateThread(NULL, 0, sem_churn_worker, (void *)(INT_PTR)50000, 0, NULL);
+    WaitForMultipleObjects(4, th, TRUE, INFINITE);
+    for (i = 0; i < 4; i++) CloseHandle(th[i]);
+    CHECK(!churn_errors, "threaded churn errors %ld", churn_errors);
+    h = new_sem(0, 0x7fffffff);
+    check_fresh(h, 0, "after threaded churn");
+    CloseHandle(h);
+    printf("semaphore_pool ok\n");
+}
+
 static volatile LONG churn_ready;
 
 static DWORD WINAPI churn_mutex(void *arg)
@@ -608,6 +752,7 @@ int main(int argc, char **argv)
     test_pulse();
     test_semantics();
     test_semaphore_tokens();
+    test_semaphore_pool();
     if (argc > 1 && !strcmp(argv[1], "terminate")) test_terminate();
     test_cross_process(argv[0]);
     test_kill_holder(argv[0]);

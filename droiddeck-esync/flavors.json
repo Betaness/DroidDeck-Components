@@ -23,7 +23,7 @@
    },
    "version_token": "{tag}-arm64",
    "keep": 2,
-   "rev": 1,
+   "rev": 2,
    "series": "valve-11",
    "profile": "valve",
    "source_match": true,

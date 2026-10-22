@@ -1,0 +1,416 @@
+diff --git a/dlls/ntdll/unix/file.c b/dlls/ntdll/unix/file.c
+index 964752c..f86b92e 100644
+--- a/dlls/ntdll/unix/file.c
++++ b/dlls/ntdll/unix/file.c
+@@ -8207,6 +8207,7 @@ NTSTATUS WINAPI NtQueryObject( HANDLE handle, OBJECT_INFORMATION_CLASS info_clas
+     TRACE("(%p,0x%08x,%p,0x%08x,%p)\n", handle, info_class, ptr, len, used_len);
+ 
+     if (used_len) *used_len = 0;
++    if (info_class != ObjectTypesInformation && (status = sem_pool_use( handle ))) return status;
+ 
+     switch (info_class)
+     {
+@@ -8378,6 +8379,7 @@ NTSTATUS WINAPI NtSetInformationObject( HANDLE handle, OBJECT_INFORMATION_CLASS
+ 
+     TRACE("(%p,0x%08x,%p,0x%08x)\n", handle, info_class, ptr, len);
+ 
++    if ((status = sem_pool_use( handle ))) return status;
+     switch (info_class)
+     {
+     case ObjectHandleFlagInformation:
+diff --git a/dlls/ntdll/unix/security.c b/dlls/ntdll/unix/security.c
+index 9931239..e81fdb8 100644
+--- a/dlls/ntdll/unix/security.c
++++ b/dlls/ntdll/unix/security.c
+@@ -1019,6 +1019,8 @@ NTSTATUS WINAPI NtQuerySecurityObject( HANDLE handle, SECURITY_INFORMATION info,
+ 
+     TRACE( "(%p,0x%08x,%p,0x%08x,%p)\n", handle, info, descr, length, retlen );
+ 
++    if ((status = sem_pool_use( handle ))) return status;
++
+     for (;;)
+     {
+         if (!(buffer = malloc( buffer_size ))) return STATUS_NO_MEMORY;
+@@ -1079,6 +1081,8 @@ NTSTATUS WINAPI NtSetSecurityObject( HANDLE handle, SECURITY_INFORMATION info, P
+ 
+     TRACE( "%p 0x%08x %p\n", handle, info, descr );
+ 
++    if ((status = sem_pool_use( handle ))) return status;
++
+     if (!descr) return STATUS_ACCESS_VIOLATION;
+ 
+     /* reuse the object attribute SD marshalling */
+diff --git a/dlls/ntdll/unix/server.c b/dlls/ntdll/unix/server.c
+index abd7793..a4b5d9c 100644
+--- a/dlls/ntdll/unix/server.c
++++ b/dlls/ntdll/unix/server.c
+@@ -1879,6 +1879,12 @@ NTSTATUS WINAPI NtDuplicateObject( HANDLE source_process, HANDLE source, HANDLE
+ 
+     if (dest) *dest = 0;
+ 
++    if (source_process == NtCurrentProcess())
++    {
++        if ((ret = sem_pool_use( source ))) return ret;
++    }
++    else if (!(options & DUPLICATE_CLOSE_SOURCE)) sem_pool_forget( source );
++
+     if ((options & DUPLICATE_CLOSE_SOURCE) && source_process != NtCurrentProcess())
+     {
+         union apc_call call;
+@@ -1941,6 +1947,8 @@ NTSTATUS WINAPI NtCompareObjects( HANDLE first, HANDLE second )
+ {
+     unsigned int status;
+ 
++    if ((status = sem_pool_use( first ))) return status;
++    if ((status = sem_pool_use( second ))) return status;
+     SERVER_START_REQ( compare_objects )
+     {
+         req->first = wine_server_obj_handle( first );
+@@ -1971,7 +1979,7 @@ NTSTATUS WINAPI NtClose( HANDLE handle )
+     sigset_t sigset;
+     HANDLE port;
+     unsigned int ret;
+-    int fd;
++    int fd, pooled;
+ 
+     if (HandleToLong( handle ) >= ~5 && HandleToLong( handle ) <= ~0)
+         return STATUS_SUCCESS;
+@@ -1985,12 +1993,17 @@ NTSTATUS WINAPI NtClose( HANDLE handle )
+     fd = remove_fd_from_cache( handle );
+     close_inproc_sync( handle );
+ 
+-    SERVER_START_REQ( close_handle )
++    /* an unused anonymous semaphore stays open for the next NtCreateSemaphore */
++    if ((pooled = sem_pool_close( handle ))) ret = pooled > 0 ? STATUS_SUCCESS : STATUS_INVALID_HANDLE;
++    else
+     {
+-        req->handle = wine_server_obj_handle( handle );
+-        ret = wine_server_call( req );
++        SERVER_START_REQ( close_handle )
++        {
++            req->handle = wine_server_obj_handle( handle );
++            ret = wine_server_call( req );
++        }
++        SERVER_END_REQ;
+     }
+-    SERVER_END_REQ;
+ 
+     server_leave_uninterrupted_section( &fd_cache_mutex, &sigset );
+ 
+diff --git a/dlls/ntdll/unix/sync.c b/dlls/ntdll/unix/sync.c
+index f44a526..40214ba 100644
+--- a/dlls/ntdll/unix/sync.c
++++ b/dlls/ntdll/unix/sync.c
+@@ -1046,6 +1046,187 @@ done:
+ }
+ 
+ 
++/***********************************************************************
++ * Pool of anonymous semaphores (droiddeck-sempool)
++ *
++ * Some applications (Unity's Mono runtime, for one) create an anonymous
++ * semaphore and close it again thousands of times per second without ever
++ * touching it in between. Each create and each close is a wineserver round
++ * trip. Instead, the handle of a semaphore this process created without a
++ * name, a root directory or a security descriptor is remembered as "fresh";
++ * when such a handle is closed while still fresh, it stays open in the
++ * server and is kept in a small pool, and the next NtCreateSemaphore asking
++ * for the same initial count, maximum and access gets it back. Since nothing
++ * ever looked at or signaled the object, it is indistinguishable from a new
++ * one. Every other operation on a fresh handle (wait, release, query,
++ * duplicate, security, handle flags, ...) makes it an ordinary handle that is
++ * closed normally, and operations on a pooled (closed) handle fail with
++ * STATUS_INVALID_HANDLE as they would after a real close. Handles of other
++ * processes and server requests are untouched; pooled handles die with the
++ * process. WINE_SEM_POOL=0 turns the pool off.
++ *
++ * The state table is read without a lock; it only changes under
++ * fd_cache_mutex, inside an uninterrupted section.
++ */
++#define SEM_POOL_KEYS      8
++#define SEM_POOL_DEPTH     64
++#define SEM_POOL_KEY_MASK  0x0f
++#define SEM_POOL_FRESH     0x10  /* returned by NtCreateSemaphore, not used yet */
++#define SEM_POOL_FREE      0x20  /* closed by the application, kept in the pool */
++
++struct sem_pool_key
++{
++    LONG          initial;
++    LONG          max;
++    ACCESS_MASK   access;
++    unsigned int  count;
++    unsigned int  idx[SEM_POOL_DEPTH];
++};
++
++unsigned char sem_pool_state[SEM_POOL_HANDLES];
++static struct sem_pool_key sem_pool_keys[SEM_POOL_KEYS];
++static unsigned int sem_pool_nb_keys;
++static int sem_pool_enabled = -1;
++static BOOL sem_pool_announced;
++
++static inline HANDLE sem_pool_index_to_handle( unsigned int idx )
++{
++    return wine_server_ptr_handle( (obj_handle_t)(idx + 1) << 2 );
++}
++
++static inline void sem_pool_set_state( unsigned int idx, unsigned char state )
++{
++    __atomic_store_n( &sem_pool_state[idx], state, __ATOMIC_RELAXED );
++}
++
++static BOOL sem_pool_wanted( ACCESS_MASK access, const OBJECT_ATTRIBUTES *attr )
++{
++    int enabled = __atomic_load_n( &sem_pool_enabled, __ATOMIC_RELAXED );
++
++    if (enabled < 0)
++    {
++        const char *env = getenv( "WINE_SEM_POOL" );
++        enabled = !env || atoi( env ) != 0;
++        __atomic_store_n( &sem_pool_enabled, enabled, __ATOMIC_RELAXED );
++    }
++    if (!enabled) return FALSE;
++    if (!attr) return TRUE;
++    return attr->Length == sizeof(*attr) && !attr->ObjectName && !attr->RootDirectory &&
++           !attr->SecurityDescriptor && !(attr->Attributes & ~(OBJ_OPENIF | OBJ_CASE_INSENSITIVE));
++}
++
++/* take a pooled handle matching the parameters; *slot receives the key slot
++ * a newly created handle is tracked with, or -1 */
++static HANDLE sem_pool_get( ACCESS_MASK access, LONG initial, LONG max, int *slot )
++{
++    struct sem_pool_key *key;
++    HANDLE handle = 0;
++    sigset_t sigset;
++    unsigned int i;
++
++    *slot = -1;
++    server_enter_uninterrupted_section( &fd_cache_mutex, &sigset );
++    for (i = 0; i < sem_pool_nb_keys; i++)
++    {
++        key = &sem_pool_keys[i];
++        if (key->initial == initial && key->max == max && key->access == access) break;
++    }
++    if (i == sem_pool_nb_keys && i < SEM_POOL_KEYS)
++    {
++        key = &sem_pool_keys[i];
++        key->initial = initial;
++        key->max = max;
++        key->access = access;
++        key->count = 0;
++        sem_pool_nb_keys++;
++    }
++    if (i < sem_pool_nb_keys)
++    {
++        *slot = i;
++        if (key->count)
++        {
++            unsigned int idx = key->idx[--key->count];
++            sem_pool_set_state( idx, SEM_POOL_FRESH | i );
++            handle = sem_pool_index_to_handle( idx );
++        }
++    }
++    server_leave_uninterrupted_section( &fd_cache_mutex, &sigset );
++    return handle;
++}
++
++/* remember a semaphore handle the server just created as fresh */
++static void sem_pool_track( HANDLE handle, int slot )
++{
++    unsigned int idx = sem_pool_index( handle );
++    sigset_t sigset;
++
++    if (slot < 0 || idx >= SEM_POOL_HANDLES) return;
++    server_enter_uninterrupted_section( &fd_cache_mutex, &sigset );
++    sem_pool_set_state( idx, SEM_POOL_FRESH | slot );
++    server_leave_uninterrupted_section( &fd_cache_mutex, &sigset );
++}
++
++/* NtClose: caller holds fd_cache_mutex. Returns 1 if the handle went into the
++ * pool, -1 if it already is in the pool (closed), 0 to close it normally. */
++int sem_pool_close( HANDLE handle )
++{
++    unsigned int idx = sem_pool_index( handle );
++    struct sem_pool_key *key;
++    unsigned char state;
++
++    if (idx >= SEM_POOL_HANDLES || !(state = sem_pool_state[idx])) return 0;
++    if (state & SEM_POOL_FREE) return -1;
++    key = &sem_pool_keys[state & SEM_POOL_KEY_MASK];
++    if (key->count == SEM_POOL_DEPTH)
++    {
++        sem_pool_set_state( idx, 0 );
++        return 0;
++    }
++    key->idx[key->count++] = idx;
++    sem_pool_set_state( idx, SEM_POOL_FREE | (state & SEM_POOL_KEY_MASK) );
++    if (!sem_pool_announced)
++    {
++        sem_pool_announced = TRUE;
++        fprintf( stderr, "droiddeck-sempool: up and running.\n" );
++    }
++    return 1;
++}
++
++/* slow path of sem_pool_use(): the handle is fresh or pooled. A fresh handle
++ * becomes an ordinary one. Using a pooled handle fails, unless it may belong
++ * to another process (foreign), in which case it leaves the pool and is
++ * closed for real. */
++NTSTATUS sem_pool_use_slow( HANDLE handle, BOOL foreign )
++{
++    unsigned int i, idx = sem_pool_index( handle );
++    NTSTATUS ret = STATUS_SUCCESS;
++    BOOL evict = FALSE;
++    unsigned char state;
++    sigset_t sigset;
++
++    server_enter_uninterrupted_section( &fd_cache_mutex, &sigset );
++    state = sem_pool_state[idx];
++    if (state & SEM_POOL_FRESH) sem_pool_set_state( idx, 0 );
++    else if ((state & SEM_POOL_FREE) && !foreign) ret = STATUS_INVALID_HANDLE;
++    else if (state & SEM_POOL_FREE)
++    {
++        struct sem_pool_key *key = &sem_pool_keys[state & SEM_POOL_KEY_MASK];
++
++        for (i = 0; i < key->count; i++)
++        {
++            if (key->idx[i] != idx) continue;
++            key->idx[i] = key->idx[--key->count];
++            break;
++        }
++        sem_pool_set_state( idx, 0 );
++        evict = TRUE;
++    }
++    server_leave_uninterrupted_section( &fd_cache_mutex, &sigset );
++
++    if (evict) NtClose( sem_pool_index_to_handle( idx ) );
++    return ret;
++}
++
+ /******************************************************************************
+  *              NtCreateSemaphore (NTDLL.@)
+  */
+@@ -1055,12 +1236,18 @@ NTSTATUS WINAPI NtCreateSemaphore( HANDLE *handle, ACCESS_MASK access, const OBJ
+     unsigned int ret;
+     data_size_t len;
+     struct object_attributes *objattr;
++    int pool_slot = -1;
+ 
+     TRACE( "access %#x, name %s, initial %d, max %d\n", access,
+            attr ? debugstr_us(attr->ObjectName) : "(null)", initial, max );
+ 
+     *handle = 0;
+     if (max <= 0 || initial < 0 || initial > max) return STATUS_INVALID_PARAMETER;
++    if (sem_pool_wanted( access, attr ) && (*handle = sem_pool_get( access, initial, max, &pool_slot )))
++    {
++        TRACE( "-> pooled %p\n", *handle );
++        return STATUS_SUCCESS;
++    }
+     if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
+ 
+     SERVER_START_REQ( create_semaphore )
+@@ -1074,6 +1261,7 @@ NTSTATUS WINAPI NtCreateSemaphore( HANDLE *handle, ACCESS_MASK access, const OBJ
+     }
+     SERVER_END_REQ;
+ 
++    if (ret == STATUS_SUCCESS) sem_pool_track( *handle, pool_slot );
+     free( objattr );
+     return ret;
+ }
+@@ -1124,6 +1312,7 @@ NTSTATUS WINAPI NtQuerySemaphore( HANDLE handle, SEMAPHORE_INFORMATION_CLASS cla
+     }
+ 
+     if (len != sizeof(SEMAPHORE_BASIC_INFORMATION)) return STATUS_INFO_LENGTH_MISMATCH;
++    if ((ret = sem_pool_use( handle ))) return ret;
+ 
+     if ((ret = inproc_query_semaphore( handle, out )) != STATUS_NOT_IMPLEMENTED)
+     {
+@@ -1155,6 +1344,7 @@ NTSTATUS WINAPI NtReleaseSemaphore( HANDLE handle, ULONG count, ULONG *previous
+ 
+     TRACE( "handle %p, count %u, prev_count %p\n", handle, count, previous );
+ 
++    if ((ret = sem_pool_use( handle ))) return ret;
+     if ((ret = inproc_release_semaphore( handle, count, previous )) != STATUS_NOT_IMPLEMENTED)
+         return ret;
+ 
+@@ -2197,6 +2387,7 @@ NTSTATUS WINAPI NtMakePermanentObject( HANDLE handle )
+ 
+     TRACE("%p\n", handle);
+ 
++    if ((ret = sem_pool_use( handle ))) return ret;
+     SERVER_START_REQ( set_object_permanence )
+     {
+         req->handle = wine_server_obj_handle( handle );
+@@ -2217,6 +2408,7 @@ NTSTATUS WINAPI NtMakeTemporaryObject( HANDLE handle )
+ 
+     TRACE("%p\n", handle);
+ 
++    if ((ret = sem_pool_use( handle ))) return ret;
+     SERVER_START_REQ( set_object_permanence )
+     {
+         req->handle = wine_server_obj_handle( handle );
+@@ -2409,6 +2601,7 @@ NTSTATUS WINAPI NtWaitForMultipleObjects( DWORD count, const HANDLE *handles, WA
+     for (i = 0; i < count; i++)
+     {
+         if (is_pseudo_handle( handles[i] )) return STATUS_INVALID_HANDLE;
++        if ((ret = sem_pool_use( handles[i] ))) return ret;
+     }
+ 
+     if ((ret = inproc_wait( count, handles, type, alertable, timeout )) != STATUS_NOT_IMPLEMENTED)
+@@ -2437,6 +2630,7 @@ NTSTATUS WINAPI NtWaitForSingleObject( HANDLE handle, BOOLEAN alertable, const L
+ 
+     TRACE( "handle %p, alertable %u, timeout %s\n", handle, alertable, debugstr_timeout(timeout) );
+ 
++    if ((ret = sem_pool_use( handle ))) return ret;
+     if ((ret = inproc_wait( 1, &handle, WaitAny, alertable, timeout )) != STATUS_NOT_IMPLEMENTED)
+     {
+         TRACE( "-> %#x\n", ret );
+@@ -2465,6 +2659,8 @@ NTSTATUS WINAPI NtSignalAndWaitForSingleObject( HANDLE signal, HANDLE wait,
+     TRACE( "signal %p, wait %p, alertable %u, timeout %s\n", signal, wait, alertable, debugstr_timeout(timeout) );
+ 
+     if (!signal) return STATUS_INVALID_HANDLE;
++    if ((ret = sem_pool_use( signal ))) return ret;
++    if ((ret = sem_pool_use( wait ))) return ret;
+ 
+     if ((ret = inproc_signal_and_wait( signal, wait, alertable, timeout )) != STATUS_NOT_IMPLEMENTED)
+         return ret;
+diff --git a/dlls/ntdll/unix/unix_private.h b/dlls/ntdll/unix/unix_private.h
+index fa3a610..6a09628 100644
+--- a/dlls/ntdll/unix/unix_private.h
++++ b/dlls/ntdll/unix/unix_private.h
+@@ -420,6 +420,36 @@ extern void dbg_init(void);
+ 
+ extern void close_inproc_sync( HANDLE handle );
+ 
++/* pool of anonymous semaphores, see sync.c */
++#define SEM_POOL_HANDLES 65536
++extern unsigned char sem_pool_state[SEM_POOL_HANDLES];
++extern int sem_pool_close( HANDLE handle );
++extern NTSTATUS sem_pool_use_slow( HANDLE handle, BOOL foreign );
++
++static inline unsigned int sem_pool_index( HANDLE handle )
++{
++    return (wine_server_obj_handle( handle ) >> 2) - 1;
++}
++
++/* call before using a handle of this process in any way; fails with
++ * STATUS_INVALID_HANDLE for a handle the application closed into the pool */
++static inline NTSTATUS sem_pool_use( HANDLE handle )
++{
++    unsigned int idx = sem_pool_index( handle );
++
++    if (idx >= SEM_POOL_HANDLES || !__atomic_load_n( &sem_pool_state[idx], __ATOMIC_RELAXED )) return STATUS_SUCCESS;
++    return sem_pool_use_slow( handle, FALSE );
++}
++
++/* the same for a handle that may belong to another process */
++static inline void sem_pool_forget( HANDLE handle )
++{
++    unsigned int idx = sem_pool_index( handle );
++
++    if (idx >= SEM_POOL_HANDLES || !__atomic_load_n( &sem_pool_state[idx], __ATOMIC_RELAXED )) return;
++    sem_pool_use_slow( handle, TRUE );
++}
++
+ extern NTSTATUS call_user_apc_dispatcher( CONTEXT *context_ptr, unsigned int flags, ULONG_PTR arg1, ULONG_PTR arg2,
+                                           ULONG_PTR arg3, PNTAPCFUNC func, NTSTATUS status );
+ extern NTSTATUS call_user_exception_dispatcher( EXCEPTION_RECORD *rec, CONTEXT *context );

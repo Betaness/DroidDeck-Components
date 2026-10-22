@@ -52,6 +52,22 @@ reads, writes and polls its eventfds with raw system calls, so no `LD_PRELOAD` w
 `read`/`write`/`poll` (the guest preloads several) sits in the sync path or in the unwind of a
 thread Wine kills.
 
+`0002-droiddeck-semaphore-pool.patch` (valve-11 series) adds droiddeck-sempool to the unix side of
+ntdll, for every sync backend. Unity's Mono runtime creates an anonymous semaphore and closes it
+again thousands of times a second without touching it in between, two wineserver round trips each
+time. A semaphore created with no name, root directory or security descriptor and no attributes but
+`OBJ_OPENIF`/`OBJ_CASE_INSENSITIVE` is remembered as fresh; closing it while still fresh keeps the
+server handle open in a per-process pool (64 per initial count, maximum and access, 8 such keys),
+and the next `NtCreateSemaphore` with the same parameters gets it back without a server call. Any
+other use of a fresh handle in this process (waits, release, query, `NtDuplicateObject`,
+`NtQueryObject`, `NtSetInformationObject`, security, `NtCompareObjects`) makes it an ordinary
+handle that is closed normally, and using a pooled handle fails with `STATUS_INVALID_HANDLE` as it
+would after a real close. The pool lives under `fd_cache_mutex` in an uninterrupted section;
+pooled handles die with the process. `WINE_SEM_POOL=0` turns it off; ntdll prints
+`droiddeck-sempool: up and running.` the first time a handle goes into the pool. A process that
+duplicates a handle out of this one by its own process handle is not seen; the pooled object it
+could then reach is one nobody else uses.
+
 The patch changes no wineserver request: `make_pack.py` refuses a build whose
 `server_protocol.h`, `request_handlers.h` or `request_trace.h` differ from the unpatched
 control build, or whose ntdll.so exports other symbols. Only `files/lib/wine/aarch64-unix/ntdll.so`
