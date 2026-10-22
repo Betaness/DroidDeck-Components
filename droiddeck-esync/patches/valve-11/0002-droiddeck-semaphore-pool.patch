@@ -41,7 +41,7 @@ index 9931239..e81fdb8 100644
  
      /* reuse the object attribute SD marshalling */
 diff --git a/dlls/ntdll/unix/server.c b/dlls/ntdll/unix/server.c
-index abd7793..a4b5d9c 100644
+index abd7793..995f8ae 100644
 --- a/dlls/ntdll/unix/server.c
 +++ b/dlls/ntdll/unix/server.c
 @@ -1879,6 +1879,12 @@ NTSTATUS WINAPI NtDuplicateObject( HANDLE source_process, HANDLE source, HANDLE
@@ -75,7 +75,7 @@ index abd7793..a4b5d9c 100644
  
      if (HandleToLong( handle ) >= ~5 && HandleToLong( handle ) <= ~0)
          return STATUS_SUCCESS;
-@@ -1985,12 +1993,17 @@ NTSTATUS WINAPI NtClose( HANDLE handle )
+@@ -1985,16 +1993,22 @@ NTSTATUS WINAPI NtClose( HANDLE handle )
      fd = remove_fd_from_cache( handle );
      close_inproc_sync( handle );
  
@@ -97,11 +97,16 @@ index abd7793..a4b5d9c 100644
  
      server_leave_uninterrupted_section( &fd_cache_mutex, &sigset );
  
+     if (fd != -1) close( fd );
++    if (pooled == 2) sem_pool_announce();
+ 
+     if (ret != STATUS_INVALID_HANDLE || !handle) return ret;
+     if (!peb->BeingDebugged) return ret;
 diff --git a/dlls/ntdll/unix/sync.c b/dlls/ntdll/unix/sync.c
-index f44a526..40214ba 100644
+index f44a526..789bab7 100644
 --- a/dlls/ntdll/unix/sync.c
 +++ b/dlls/ntdll/unix/sync.c
-@@ -1046,6 +1046,187 @@ done:
+@@ -1046,6 +1046,193 @@ done:
  }
  
  
@@ -226,7 +231,9 @@ index f44a526..40214ba 100644
 +}
 +
 +/* NtClose: caller holds fd_cache_mutex. Returns 1 if the handle went into the
-+ * pool, -1 if it already is in the pool (closed), 0 to close it normally. */
++ * pool (2 the first time, the caller then calls sem_pool_announce() after
++ * leaving the critical section), -1 if it already is in the pool (closed),
++ * 0 to close it normally. */
 +int sem_pool_close( HANDLE handle )
 +{
 +    unsigned int idx = sem_pool_index( handle );
@@ -243,12 +250,16 @@ index f44a526..40214ba 100644
 +    }
 +    key->idx[key->count++] = idx;
 +    sem_pool_set_state( idx, SEM_POOL_FREE | (state & SEM_POOL_KEY_MASK) );
-+    if (!sem_pool_announced)
-+    {
-+        sem_pool_announced = TRUE;
-+        fprintf( stderr, "droiddeck-sempool: up and running.\n" );
-+    }
-+    return 1;
++    if (sem_pool_announced) return 1;
++    /* the caller prints the notice once it has left the critical section */
++    sem_pool_announced = TRUE;
++    return 2;
++}
++
++/* NtClose: the first handle went into the pool; called without fd_cache_mutex */
++void sem_pool_announce(void)
++{
++    fprintf( stderr, "droiddeck-sempool: up and running.\n" );
 +}
 +
 +/* slow path of sem_pool_use(): the handle is fresh or pooled. A fresh handle
@@ -289,7 +300,7 @@ index f44a526..40214ba 100644
  /******************************************************************************
   *              NtCreateSemaphore (NTDLL.@)
   */
-@@ -1055,12 +1236,18 @@ NTSTATUS WINAPI NtCreateSemaphore( HANDLE *handle, ACCESS_MASK access, const OBJ
+@@ -1055,12 +1242,18 @@ NTSTATUS WINAPI NtCreateSemaphore( HANDLE *handle, ACCESS_MASK access, const OBJ
      unsigned int ret;
      data_size_t len;
      struct object_attributes *objattr;
@@ -308,7 +319,7 @@ index f44a526..40214ba 100644
      if ((ret = alloc_object_attributes( attr, &objattr, &len ))) return ret;
  
      SERVER_START_REQ( create_semaphore )
-@@ -1074,6 +1261,7 @@ NTSTATUS WINAPI NtCreateSemaphore( HANDLE *handle, ACCESS_MASK access, const OBJ
+@@ -1074,6 +1267,7 @@ NTSTATUS WINAPI NtCreateSemaphore( HANDLE *handle, ACCESS_MASK access, const OBJ
      }
      SERVER_END_REQ;
  
@@ -316,7 +327,7 @@ index f44a526..40214ba 100644
      free( objattr );
      return ret;
  }
-@@ -1124,6 +1312,7 @@ NTSTATUS WINAPI NtQuerySemaphore( HANDLE handle, SEMAPHORE_INFORMATION_CLASS cla
+@@ -1124,6 +1318,7 @@ NTSTATUS WINAPI NtQuerySemaphore( HANDLE handle, SEMAPHORE_INFORMATION_CLASS cla
      }
  
      if (len != sizeof(SEMAPHORE_BASIC_INFORMATION)) return STATUS_INFO_LENGTH_MISMATCH;
@@ -324,7 +335,7 @@ index f44a526..40214ba 100644
  
      if ((ret = inproc_query_semaphore( handle, out )) != STATUS_NOT_IMPLEMENTED)
      {
-@@ -1155,6 +1344,7 @@ NTSTATUS WINAPI NtReleaseSemaphore( HANDLE handle, ULONG count, ULONG *previous
+@@ -1155,6 +1350,7 @@ NTSTATUS WINAPI NtReleaseSemaphore( HANDLE handle, ULONG count, ULONG *previous
  
      TRACE( "handle %p, count %u, prev_count %p\n", handle, count, previous );
  
@@ -332,7 +343,7 @@ index f44a526..40214ba 100644
      if ((ret = inproc_release_semaphore( handle, count, previous )) != STATUS_NOT_IMPLEMENTED)
          return ret;
  
-@@ -2197,6 +2387,7 @@ NTSTATUS WINAPI NtMakePermanentObject( HANDLE handle )
+@@ -2197,6 +2393,7 @@ NTSTATUS WINAPI NtMakePermanentObject( HANDLE handle )
  
      TRACE("%p\n", handle);
  
@@ -340,7 +351,7 @@ index f44a526..40214ba 100644
      SERVER_START_REQ( set_object_permanence )
      {
          req->handle = wine_server_obj_handle( handle );
-@@ -2217,6 +2408,7 @@ NTSTATUS WINAPI NtMakeTemporaryObject( HANDLE handle )
+@@ -2217,6 +2414,7 @@ NTSTATUS WINAPI NtMakeTemporaryObject( HANDLE handle )
  
      TRACE("%p\n", handle);
  
@@ -348,7 +359,7 @@ index f44a526..40214ba 100644
      SERVER_START_REQ( set_object_permanence )
      {
          req->handle = wine_server_obj_handle( handle );
-@@ -2409,6 +2601,7 @@ NTSTATUS WINAPI NtWaitForMultipleObjects( DWORD count, const HANDLE *handles, WA
+@@ -2409,6 +2607,7 @@ NTSTATUS WINAPI NtWaitForMultipleObjects( DWORD count, const HANDLE *handles, WA
      for (i = 0; i < count; i++)
      {
          if (is_pseudo_handle( handles[i] )) return STATUS_INVALID_HANDLE;
@@ -356,7 +367,7 @@ index f44a526..40214ba 100644
      }
  
      if ((ret = inproc_wait( count, handles, type, alertable, timeout )) != STATUS_NOT_IMPLEMENTED)
-@@ -2437,6 +2630,7 @@ NTSTATUS WINAPI NtWaitForSingleObject( HANDLE handle, BOOLEAN alertable, const L
+@@ -2437,6 +2636,7 @@ NTSTATUS WINAPI NtWaitForSingleObject( HANDLE handle, BOOLEAN alertable, const L
  
      TRACE( "handle %p, alertable %u, timeout %s\n", handle, alertable, debugstr_timeout(timeout) );
  
@@ -364,7 +375,7 @@ index f44a526..40214ba 100644
      if ((ret = inproc_wait( 1, &handle, WaitAny, alertable, timeout )) != STATUS_NOT_IMPLEMENTED)
      {
          TRACE( "-> %#x\n", ret );
-@@ -2465,6 +2659,8 @@ NTSTATUS WINAPI NtSignalAndWaitForSingleObject( HANDLE signal, HANDLE wait,
+@@ -2465,6 +2665,8 @@ NTSTATUS WINAPI NtSignalAndWaitForSingleObject( HANDLE signal, HANDLE wait,
      TRACE( "signal %p, wait %p, alertable %u, timeout %s\n", signal, wait, alertable, debugstr_timeout(timeout) );
  
      if (!signal) return STATUS_INVALID_HANDLE;
@@ -374,10 +385,10 @@ index f44a526..40214ba 100644
      if ((ret = inproc_signal_and_wait( signal, wait, alertable, timeout )) != STATUS_NOT_IMPLEMENTED)
          return ret;
 diff --git a/dlls/ntdll/unix/unix_private.h b/dlls/ntdll/unix/unix_private.h
-index fa3a610..6a09628 100644
+index fa3a610..d6823af 100644
 --- a/dlls/ntdll/unix/unix_private.h
 +++ b/dlls/ntdll/unix/unix_private.h
-@@ -420,6 +420,36 @@ extern void dbg_init(void);
+@@ -420,6 +420,37 @@ extern void dbg_init(void);
  
  extern void close_inproc_sync( HANDLE handle );
  
@@ -385,6 +396,7 @@ index fa3a610..6a09628 100644
 +#define SEM_POOL_HANDLES 65536
 +extern unsigned char sem_pool_state[SEM_POOL_HANDLES];
 +extern int sem_pool_close( HANDLE handle );
++extern void sem_pool_announce(void);
 +extern NTSTATUS sem_pool_use_slow( HANDLE handle, BOOL foreign );
 +
 +static inline unsigned int sem_pool_index( HANDLE handle )

@@ -64,9 +64,15 @@ other use of a fresh handle in this process (waits, release, query, `NtDuplicate
 handle that is closed normally, and using a pooled handle fails with `STATUS_INVALID_HANDLE` as it
 would after a real close. The pool lives under `fd_cache_mutex` in an uninterrupted section;
 pooled handles die with the process. `WINE_SEM_POOL=0` turns it off; ntdll prints
-`droiddeck-sempool: up and running.` the first time a handle goes into the pool. A process that
-duplicates a handle out of this one by its own process handle is not seen; the pooled object it
-could then reach is one nobody else uses.
+`droiddeck-sempool: up and running.` the first time a handle goes into the pool (after leaving the
+critical section). A limit: another process that duplicates a fresh handle out of this one through
+its own handle to this process (`DuplicateHandle` without `DUPLICATE_CLOSE_SOURCE`) is not seen,
+because that is a server request this process takes no part in. If this process then closes its
+handle, the handle still goes into the pool, and the next `NtCreateSemaphore` here with the same
+parameters returns a semaphore the other process still holds: its releases and waits act on the
+new semaphore. Checking the object's handle count before pooling would take a server round trip
+and cancel the gain, so this is left alone; a program that hands anonymous semaphores to a broker
+or parent process this way needs `WINE_SEM_POOL=0`.
 
 The patch changes no wineserver request: `make_pack.py` refuses a build whose
 `server_protocol.h`, `request_handlers.h` or `request_trace.h` differ from the unpatched
