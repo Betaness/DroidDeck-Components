@@ -52,8 +52,9 @@ reads, writes and polls its eventfds with raw system calls, so no `LD_PRELOAD` w
 `read`/`write`/`poll` (the guest preloads several) sits in the sync path or in the unwind of a
 thread Wine kills.
 
-`0002-droiddeck-semaphore-pool.patch` (valve-11 series) adds droiddeck-sempool to the unix side of
-ntdll, for every sync backend. Unity's Mono runtime creates an anonymous semaphore and closes it
+`0002-droiddeck-semaphore-pool.patch` (valve-11 series, which GE builds use too, and the same change
+in cachyos-11) adds droiddeck-sempool to the unix side of ntdll, for every sync backend. Unity's
+Mono runtime creates an anonymous semaphore and closes it
 again thousands of times a second without touching it in between, two wineserver round trips each
 time. A semaphore created with no name, root directory or security descriptor and no attributes but
 `OBJ_OPENIF`/`OBJ_CASE_INSENSITIVE` is remembered as fresh; closing it while still fresh keeps the
