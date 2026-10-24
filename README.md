@@ -28,7 +28,9 @@ repository pins by name and sha256.
   starts the pack build when one appears.
 - `.github/workflows/build-droiddeck-esync-packs.yml`: builds, smoke-tests and publishes packs, then
   signs a new index (environment `droiddeck-esync-signing`, `main` only).
-- `tests/`: unit tests for the tools and workflows.
+- `tests/`: unit tests for the tools and workflows: `python3 -m unittest discover -s tests`. The
+  `make_pack.py` tests need DroidDeck's guest script (see
+  [PATCHES.md](droiddeck-esync/PATCHES.md)) and are skipped without it.
 
 ## VR module
 

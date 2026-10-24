@@ -158,9 +158,12 @@ and manual runs elsewhere only build.
 A pack is rebuilt only for a new `rev`: bump `rev` of the flavor in `flavors.json` whenever the
 patch series or the build changes. Local builds: `BUILD_DIR=<the flavor's build_dir> SYNC_PROFILE=<the
 flavor's profile> build-local.sh <sdk-rootfs> <wine-source> <work-dir> <out-dir> [patch-dir]`,
-then `make_pack.py`. `make_pack.py` and the tests (`python3 -m unittest discover -s tests`) read the
-guest script from a DroidDeck checkout at `droiddeck/` in this repository, or from the path in
-`DROIDDECK_ESYNC_GUEST`.
+then `make_pack.py`. `make_pack.py` reads the guest script from a DroidDeck checkout at
+`droiddeck/` in this repository, or from the path in `DROIDDECK_ESYNC_GUEST`. The tests
+(`python3 -m unittest discover -s tests`) skip the `make_pack.py` cases when neither is there
+(they still run on CI, which fetches the script); to run them all, check the script out like
+`test.yml` does or point at an existing checkout:
+`DROIDDECK_ESYNC_GUEST=<DroidDeck>/tools/linuxfs/overlay/usr/local/bin/droiddeck-esync python3 -m unittest discover -s tests`.
 
 ## Setup
 

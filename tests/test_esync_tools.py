@@ -39,6 +39,9 @@ NTDLL = make_pack.NTDLL
 WINESERVER = make_pack.WINESERVER
 HAVE_ZSTD = shutil.which("zstd") is not None
 HAVE_OPENSSL = shutil.which("openssl") is not None
+# make_pack.py measures every pack with the guest script from a DroidDeck checkout. Without one the
+# MakePack tests are skipped locally; CI (test.yml) fetches it, so there a missing script fails them.
+HAVE_GUEST = make_pack.GUEST.is_file() or bool(os.environ.get("CI"))
 SPEC_KEY = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFyqZQAMh3g3nsEGLU+kBGVPBEkXrDv5F3kPtuQ+FV1DkTCGmYUQ1LS9wJtHGt0Ht4wToHGGEp9yzDibYZ4/zhg=="
 GE_LINE = "1789520806 GE-Proton11-7"
 VALVE_LINE = "1789159687 experimental-11.0-20260910b-arm64"
@@ -118,6 +121,8 @@ def run_main(function, argv, env=None):
 
 
 @unittest.skipUnless(HAVE_ZSTD, "zstd is not installed")
+@unittest.skipUnless(HAVE_GUEST, f"no guest script at {make_pack.GUEST}: check out Droid-Deck/DroidDeck at "
+                     "droiddeck/ or set DROIDDECK_ESYNC_GUEST")
 class MakePackTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -338,6 +343,8 @@ class MakePackTest(unittest.TestCase):
         self.assertIn("no *.patch files", stderr)
         self.assertFalse((self.tmp / "out").exists())
 
+
+class MakePackSlugTest(unittest.TestCase):
     def test_slug(self):
         self.assertEqual(make_pack.slug("GE-Proton 11/7~x+y"), "GE-Proton-11-7-x-y")
         self.assertEqual(make_pack.slug("experimental-11.0-20260910b-arm64"), "experimental-11.0-20260910b-arm64")
