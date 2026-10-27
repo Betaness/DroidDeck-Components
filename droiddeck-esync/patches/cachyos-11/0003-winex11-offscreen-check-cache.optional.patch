@@ -1,0 +1,151 @@
+Subject: [PATCH] winex11.drv: Reuse the offscreen check on the present path.
+
+needs_offscreen_rendering() asks wineserver about the window and its
+relatives, and it runs twice per present: when win32u updates the client
+surface before vkQueuePresentKHR (or a GL swap) and again in the
+present. With WINE_OFFSCREEN_CHECK_MS set, the last answer is reused for
+that many milliseconds as long as this process changes no window:
+position, style, parent and layered changes, window creation and the
+destruction of X windows bump a counter that forces a fresh check. A
+client window that was detached meanwhile is still attached again on
+every call. Unset or 0 checks on every call, as before.
+
+Same environment variable and default as DroidDeck-Proton's
+"winex11.drv: Check needs_offscreen_rendering at most every 100 ms on
+the present path" (The412Banner, proton-wine ff9db6f6/bab12909), which
+also skips the check after window changes.
+
+diff --git a/dlls/winex11.drv/init.c b/dlls/winex11.drv/init.c
+index eeac1c7..a4658f8 100644
+--- a/dlls/winex11.drv/init.c
++++ b/dlls/winex11.drv/init.c
+@@ -317,6 +317,9 @@ struct x11drv_client_surface
+     Window window;
+     RECT rect;
+     BOOL raw;
++    BOOL offscreen_checked;
++    LONG offscreen_serial;
++    DWORD offscreen_checked_at;
+ 
+     HDC hdc_src;
+     HDC hdc_dst;
+@@ -397,9 +400,42 @@ static void client_surface_update_geometry( HWND hwnd, struct x11drv_client_surf
+     XFlush( gdi_display );
+ }
+ 
++/* bumped by the window changes this process makes that needs_offscreen_rendering depends on */
++static LONG offscreen_serial;
++
++void offscreen_state_changed(void)
++{
++    InterlockedIncrement( &offscreen_serial );
++}
++
++/* needs_offscreen_rendering makes wineserver round trips and runs twice per present (update and
++ * present). WINE_OFFSCREEN_CHECK_MS lets it reuse the last answer for that long while this process
++ * changes no window; unset or 0 checks on every call. */
++static BOOL offscreen_check_cached( struct x11drv_client_surface *surface )
++{
++    static int interval = -1;
++    LONG serial = ReadNoFence( &offscreen_serial );
++    DWORD now;
++
++    if (interval == -1)
++    {
++        const char *env = getenv( "WINE_OFFSCREEN_CHECK_MS" );
++        interval = env ? max( atoi( env ), 0 ) : 0;
++    }
++    if (!interval) return FALSE;
++
++    now = NtGetTickCount();
++    if (surface->offscreen_checked && surface->offscreen_serial == serial && now - surface->offscreen_checked_at < interval)
++        return TRUE;
++    surface->offscreen_checked = TRUE;
++    surface->offscreen_serial = serial;
++    surface->offscreen_checked_at = now;
++    return FALSE;
++}
++
+ static void client_surface_update_offscreen( HWND hwnd, struct x11drv_client_surface *surface )
+ {
+-    BOOL offscreen = needs_offscreen_rendering( hwnd );
++    BOOL offscreen = offscreen_check_cached( surface ) ? surface->client.offscreen : needs_offscreen_rendering( hwnd );
+     struct x11drv_win_data *data;
+ 
+     if (surface->other_process) offscreen = TRUE;
+diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
+index cc3b618..482778d 100644
+--- a/dlls/winex11.drv/window.c
++++ b/dlls/winex11.drv/window.c
+@@ -2868,6 +2868,7 @@ done:
+ static void destroy_whole_window( struct x11drv_win_data *data, BOOL already_destroyed )
+ {
+     TRACE( "win %p xwin %lx/%lx\n", data->hwnd, data->whole_window, data->client_window );
++    offscreen_state_changed();
+ 
+     if (!data->whole_window)
+     {
+@@ -2976,6 +2977,7 @@ void X11DRV_SetWindowStyle( HWND hwnd, INT offset, STYLESTRUCT *style )
+     DWORD changed = style->styleNew ^ style->styleOld;
+     BOOL flush = FALSE;
+ 
++    offscreen_state_changed();
+     if (hwnd == NtUserGetDesktopWindow()) return;
+     if (!(data = get_win_data( hwnd ))) return;
+     if (!data->whole_window) goto done;
+@@ -3152,6 +3154,7 @@ LRESULT X11DRV_DesktopWindowProc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
+  */
+ BOOL X11DRV_CreateWindow( HWND hwnd )
+ {
++    offscreen_state_changed();
+     if (hwnd == NtUserGetDesktopWindow())
+     {
+         static const WCHAR winsta0[] = {'W','i','n','S','t','a','0',0};
+@@ -3554,6 +3557,7 @@ void X11DRV_SetParent( HWND hwnd, HWND parent, HWND old_parent )
+ {
+     struct x11drv_win_data *data;
+ 
++    offscreen_state_changed();
+     if (parent == old_parent) return;
+     if (!(data = get_win_data( hwnd ))) return;
+     if (data->embedded) goto done;
+@@ -3684,6 +3688,7 @@ void X11DRV_WindowPosChanged( HWND hwnd, HWND insert_after, HWND owner_hint, UIN
+     struct window_rects old_rects;
+     BOOL is_managed, was_fullscreen, activate = !(swp_flags & SWP_NOACTIVATE), fullscreen = !!(swp_flags & WINE_SWP_FULLSCREEN);
+ 
++    offscreen_state_changed();
+     if ((is_managed = is_window_managed( hwnd, swp_flags, fullscreen ))) make_owner_managed( hwnd );
+     set_surface_window_rects( surface, new_rects );
+ 
+@@ -3905,8 +3910,10 @@ void X11DRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
+  */
+ void X11DRV_SetLayeredWindowAttributes( HWND hwnd, COLORREF key, BYTE alpha, DWORD flags )
+ {
+-    struct x11drv_win_data *data = get_win_data( hwnd );
++    struct x11drv_win_data *data;
+ 
++    offscreen_state_changed();
++    data = get_win_data( hwnd );
+     if (data)
+     {
+         set_window_visual( data, &default_visual, FALSE );
+@@ -3941,6 +3948,7 @@ void X11DRV_UpdateLayeredWindow( HWND hwnd, BYTE alpha, UINT flags )
+ {
+     struct x11drv_win_data *data;
+ 
++    offscreen_state_changed();
+     if (!(data = get_win_data( hwnd ))) return;
+ 
+     if (data->whole_window)
+diff --git a/dlls/winex11.drv/x11drv.h b/dlls/winex11.drv/x11drv.h
+index 1e3f213..87af344 100644
+--- a/dlls/winex11.drv/x11drv.h
++++ b/dlls/winex11.drv/x11drv.h
+@@ -756,6 +756,7 @@ extern Window create_client_window( HWND hwnd, RECT client_rect, const XVisualIn
+ extern void detach_client_window( struct x11drv_win_data *data, Window client_window );
+ extern void attach_client_window( struct x11drv_win_data *data, Window client_window );
+ extern void destroy_client_window( HWND hwnd, Window client_window );
++extern void offscreen_state_changed(void);
+ extern void set_window_visual( struct x11drv_win_data *data, const XVisualInfo *vis, BOOL use_alpha );
+ extern void change_systray_owner( Display *display, Window systray_window );
+ extern BOOL update_clipboard( HWND hwnd );

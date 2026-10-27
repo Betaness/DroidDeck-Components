@@ -24,6 +24,10 @@ REVOKED = HERE / "revoked.txt"
 NTDLL = "files/lib/wine/aarch64-unix/ntdll.so"
 WINESERVER = "files/bin-arm64/wineserver"
 BINARIES = (NTDLL, WINESERVER)
+# Files of the same build a pack also replaces when the patch series changes them (pack.json "extras");
+# the guest and the app accept no others.
+WINEX11 = "files/lib/wine/aarch64-unix/winex11.so"
+EXTRAS = (WINEX11,)
 COPY = ("files/bin-arm64/wine", "files/lib/wine/aarch64-unix/wine", "files/lib/wine/aarch64-unix/wine-preloader")
 HEADERS = ("server_protocol.h", "request_handlers.h", "request_trace.h")
 FLAVORS = ("valve", "ge", "cachyos")
@@ -228,6 +232,27 @@ def protocol_version(control: Path, patched: Path) -> int:
     return version
 
 
+def changed_extras(stock_dir: Path | None, control: Path, patched: Path, allow_unreproduced: bool) -> dict[str, Path]:
+    """The extra files the patch changed, where the pack may replace them."""
+    found = {}
+    for rel in EXTRAS:
+        if not (control / rel).exists() and not (patched / rel).exists():
+            continue
+        before, after = binary(control, rel), binary(patched, rel)
+        if sha256_file(before) == sha256_file(after):
+            continue
+        if stock_dir is not None:
+            stock = stock_dir / rel
+            if not stock.is_file():
+                print(f"make_pack: the release has no {rel}; the pack leaves it out", file=sys.stderr)
+                continue
+            if sha256_file(stock) != sha256_file(before) and not allow_unreproduced:
+                print(f"make_pack: the control build does not reproduce the stock {rel}; the pack leaves it stock", file=sys.stderr)
+                continue
+        found[rel] = after
+    return found
+
+
 def make_pack(
     flavor: str,
     rev: int,
@@ -282,6 +307,10 @@ def make_pack(
     if exports != control_exports:
         raise PackError("the control build of ntdll.so exports other symbols than the stock one: the wine source does not match this release")
     protocol = protocol_version(control, patched)
+    extras = changed_extras(stock_dir, control, patched, allow_unreproduced)
+    skipped = patched / "skipped-patches"
+    if skipped.is_file() and skipped.read_text().strip():
+        print(f"make_pack: patches that did not apply: {' '.join(skipped.read_text().split())}", file=sys.stderr)
     if stock_dir is not None:
         for rel in BINARIES:
             state = "reproduces" if stock[rel] == built[rel] else "differs from"
@@ -310,11 +339,15 @@ def make_pack(
         "source": dict(source),
         "patch": {"series": series, "sha256": patch_digest(patch_dir)},
     }
+    if extras:
+        pack["extras"] = {rel: sha256_file(path) for rel, path in extras.items()}
     members = {
         "pack.json": (dump_json(pack), 0o644),
         NTDLL: (patched_paths[NTDLL].read_bytes(), 0o755),
         WINESERVER: (patched_paths[WINESERVER].read_bytes(), 0o755),
     }
+    for rel, path in extras.items():
+        members[rel] = (path.read_bytes(), 0o755)
     archive = compress(tar_bytes(members))
     if unpack(archive) != members:
         raise PackError("the archive does not read back as written")

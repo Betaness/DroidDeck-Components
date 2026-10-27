@@ -75,11 +75,26 @@ new semaphore. Checking the object's handle count before pooling would take a se
 and cancel the gain, so this is left alone; a program that hands anonymous semaphores to a broker
 or parent process this way needs `WINE_SEM_POOL=0`.
 
+`0003-winex11-offscreen-check-cache.optional.patch` (both series) makes winex11 reuse its
+`needs_offscreen_rendering()` answer on the present path. win32u runs that check twice per present
+(the client surface update before `vkQueuePresentKHR` or a GL swap, and the present itself), and each
+check makes wineserver round trips. With `WINE_OFFSCREEN_CHECK_MS=<ms>` the answer is reused for that
+long while the process changes no window (position, style, parent, layered changes, window creation
+and the destruction of X windows force a fresh check); unset or 0 keeps the check on every call. It
+takes DroidDeck-Proton's variable and default (off). A patch named `*.optional.patch` is applied only
+where it applies with `--fuzz=0`; elsewhere `build-pack.sh` builds without it and lists it in
+`skipped-patches`, and the pack keeps the stock file.
+
 The patch changes no wineserver request: `make_pack.py` refuses a build whose
 `server_protocol.h`, `request_handlers.h` or `request_trace.h` differ from the unpatched
 control build, or whose ntdll.so exports other symbols. Only `files/lib/wine/aarch64-unix/ntdll.so`
 and `files/bin-arm64/wineserver` are replaced, so every Proton build needs its own pair, built
-from that build's exact wine source. That pair plus `pack.json` is a pack (`<id>.tzst`). On the
+from that build's exact wine source. That pair plus `pack.json` is a pack (`<id>.tzst`). A pack
+also carries `files/lib/wine/aarch64-unix/winex11.so` when the series changes it, listed with its
+sha256 in `pack.json` `extras` (not in the index entry: the archive's checksum covers it). For a
+pack made against stock binaries the control build has to reproduce the stock winex11.so as well,
+or the pack leaves it stock. Apps and guest scripts that predate `extras` reject such a pack (app)
+or keep the stock winex11.so (guest); DroidDeck G2 accepts both. On the
 device the guest runs Proton from a shadow tree that links the stock tool and holds the two
 patched files (`droiddeck-esync`, store in `~/.local/share/droiddeck-esync`).
 

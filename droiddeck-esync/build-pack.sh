@@ -24,10 +24,18 @@ prepare() {
   for f in include/wine/server_protocol.h server/request_handlers.h server/request_trace.h; do
     cp -a "$origin/$f" "$s/$f"
   done
+  : > "$b/skipped-patches"
   if [ -n "$patches" ]; then
     local p found=0
     for p in "$patches"/*.patch; do
       [ -f "$p" ] || continue
+      # *.optional.patch only touches files a pack may leave stock (winex11.so): where it does not
+      # apply to this build, the pack is made without it instead of failing.
+      if [[ $p == *.optional.patch ]] && ! patch -d "$s" -p1 --dry-run --forward --fuzz=0 -s < "$p" > /dev/null 2>&1; then
+        echo "$(basename "$p") does not apply to this wine; the pack is made without it" >&2
+        basename "$p" >> "$b/skipped-patches"
+        continue
+      fi
       patch -d "$s" -p1 --forward --fuzz=0 --no-backup-if-mismatch -s < "$p"
       found=1
     done
@@ -93,12 +101,16 @@ build() {
   ( cd "$o" && env "${env[@]}" "$conf" -C --prefix="$d" --libdir="$d/lib" --host=aarch64-linux-gnu "${env[@]}" \
       "${args[@]}" ) > "$b/configure.log" 2>&1
   ( cd "$o" && env "${env[@]}" make -j"$jobs" __tooldeps__ ) > "$b/tools.log" 2>&1
-  ( cd "$o" && env "${env[@]}" make -j"$jobs" dlls/ntdll/ntdll.so server/wineserver ) > "$b/make.log" 2>&1
+  ( cd "$o" && env "${env[@]}" make -j"$jobs" dlls/ntdll/ntdll.so server/wineserver dlls/winex11.drv/winex11.so ) > "$b/make.log" 2>&1
   mkdir -p "$out/files/lib/wine/aarch64-unix" "$out/files/bin-arm64"
-  llvm-objcopy --strip-debug --set-section-flags .text=contents,alloc,load,readonly,code \
-    "$o/dlls/ntdll/ntdll.so" "$out/files/lib/wine/aarch64-unix/ntdll.so"
+  local lib
+  for lib in ntdll/ntdll.so winex11.drv/winex11.so; do
+    llvm-objcopy --strip-debug --set-section-flags .text=contents,alloc,load,readonly,code \
+      "$o/dlls/$lib" "$out/files/lib/wine/aarch64-unix/${lib#*/}"
+  done
   llvm-objcopy --strip-debug "$o/server/wineserver" "$out/files/bin-arm64/wineserver"
-  chmod 0755 "$out/files/lib/wine/aarch64-unix/ntdll.so" "$out/files/bin-arm64/wineserver"
+  chmod 0755 "$out/files/lib/wine/aarch64-unix/ntdll.so" "$out/files/lib/wine/aarch64-unix/winex11.so" "$out/files/bin-arm64/wineserver"
+  cp "$b/skipped-patches" "$out/skipped-patches"
   cp "$s/include/wine/server_protocol.h" "$s/server/request_handlers.h" "$s/server/request_trace.h" "$out/"
   sed -n 's/^#define SERVER_PROTOCOL_VERSION \([0-9]*\)$/\1/p' "$out/server_protocol.h" > "$out/protocol"
 }

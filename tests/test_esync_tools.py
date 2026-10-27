@@ -37,6 +37,7 @@ discover = load("discover")
 
 NTDLL = make_pack.NTDLL
 WINESERVER = make_pack.WINESERVER
+WINEX11 = make_pack.WINEX11
 HAVE_ZSTD = shutil.which("zstd") is not None
 HAVE_OPENSSL = shutil.which("openssl") is not None
 # make_pack.py measures every pack with the guest script from a DroidDeck checkout. Without one the
@@ -212,6 +213,53 @@ class MakePackTest(unittest.TestCase):
         self.assertEqual(guest.find_pack(packs, guest.measure(str(self.stock)))["id"], ident)
         other = tool_tree(self.tmp / "other", "other", version=GE_LINE)
         self.assertIsNone(guest.find_pack(packs, guest.measure(str(other))))
+
+    def test_a_changed_winex11_goes_into_the_pack(self):
+        for tree in (self.stock, self.control):
+            (tree / WINEX11).write_bytes(elf((), b"stock winex11"))
+        (self.patched / WINEX11).write_bytes(elf((), b"patched winex11"))
+        code, ident, stderr = self.make()
+        self.assertEqual(code, 0, stderr)
+        content = members((self.tmp / "out" / f"{ident}.tzst").read_bytes())
+        self.assertEqual(sorted(content), sorted([NTDLL, WINESERVER, WINEX11, "pack.json"]))
+        self.assertEqual(content[WINEX11][0].mode, 0o755)
+        self.assertEqual(content[WINEX11][1], (self.patched / WINEX11).read_bytes())
+        pack = json.loads(content["pack.json"][1])
+        self.assertEqual(pack["extras"], {WINEX11: sha256((self.patched / WINEX11).read_bytes())})
+        entry = json.loads((self.tmp / "out" / f"{ident}.json").read_text())
+        self.assertNotIn("extras", entry)
+
+        store = self.tmp / "store"
+        pack_dir = store / "packs" / ident
+        pack_dir.mkdir(parents=True)
+        for name, (_, data) in content.items():
+            (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+            (pack_dir / name).write_bytes(data)
+        (pack_dir / ".complete").write_bytes(b"")
+        guest = make_pack.guest()
+        packs = guest.load_packs(str(store))
+        self.assertEqual([pack["id"] for pack in packs], [ident])
+        if "EXTRA_FILES" in vars(guest):
+            dist = Path(guest.build_shadow(str(self.stock), str(pack_dir), str(self.tmp / "dist")))
+            self.assertFalse((dist / WINEX11).is_symlink())
+            self.assertEqual((dist / WINEX11).read_bytes(), (self.patched / WINEX11).read_bytes())
+
+    def test_winex11_stays_stock_unless_the_patch_changed_it(self):
+        for tree in (self.stock, self.control, self.patched):
+            (tree / WINEX11).write_bytes(elf((), b"stock winex11"))
+        code, ident, stderr = self.make()
+        self.assertEqual(code, 0, stderr)
+        content = members((self.tmp / "out" / f"{ident}.tzst").read_bytes())
+        self.assertNotIn(WINEX11, content)
+        self.assertNotIn("extras", json.loads(content["pack.json"][1]))
+
+        (self.patched / WINEX11).write_bytes(elf((), b"patched winex11"))
+        (self.stock / WINEX11).write_bytes(elf((), b"another stock winex11"))
+        code, ident, stderr = self.make(out="out2")
+        self.assertEqual(code, 0, stderr)
+        self.assertIn(f"does not reproduce the stock {WINEX11}", stderr)
+        content = members((self.tmp / "out2" / f"{ident}.tzst").read_bytes())
+        self.assertNotIn(WINEX11, content)
 
     def test_output_is_deterministic(self):
         code, first, stderr = self.make(out="one")
