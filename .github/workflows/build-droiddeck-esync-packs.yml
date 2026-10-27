@@ -173,12 +173,15 @@ jobs:
           echo "$DEPOT_DOWNLOADER_SHA256  depotdownloader/DepotDownloader-linux-arm64.zip" | sha256sum -c -
           unzip -q depotdownloader/DepotDownloader-linux-arm64.zip -d depotdownloader
           chmod +x depotdownloader/DepotDownloader
-          printf '%s\n' version files/lib/wine/aarch64-unix/ntdll.so files/bin-arm64/wineserver > depot-files.txt
+          # winex11.so: the stock file an optional winex11 patch (pack extras) is checked against
+          printf '%s\n' version files/lib/wine/aarch64-unix/ntdll.so files/bin-arm64/wineserver \
+            files/lib/wine/aarch64-unix/winex11.so > depot-files.txt
           timeout 30m depotdownloader/DepotDownloader -app "$DEPOT_APP" -os linux -all-archs \
             -username "$STEAM_DEPOT_USER" -password "$STEAM_DEPOT_TOKEN" \
             -filelist depot-files.txt -dir depot </dev/null
           test -f depot/files/lib/wine/aarch64-unix/ntdll.so
           test -f depot/files/bin-arm64/wineserver
+          test -f depot/files/lib/wine/aarch64-unix/winex11.so
           line=$(head -n1 depot/version | tr -d '\r')
           token=$(awk '{ print $2 }' <<<"$line")
           if [ "$token" != "$VERSION_TOKEN" ]; then

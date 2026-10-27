@@ -1342,6 +1342,11 @@ class ShippedFilesTest(unittest.TestCase):
             self.assertIs(checkout["with"]["persist-credentials"], False)
         build_text = json.dumps(jobs["build"])
         self.assertNotIn("gh release upload", build_text)
+        # the depot copy is the stock side of every extra the pack may replace (make_pack.changed_extras)
+        depot = next(step["run"] for step in jobs["build"]["steps"] if "depot-files.txt" in str(step.get("run", "")))
+        for rel in make_pack.EXTRAS:
+            self.assertIn(rel, depot)
+            self.assertIn(f"test -f depot/{rel}", depot)
         self.assertNotIn("gh release create", build_text)
         self.assertIn("DEPOT_DOWNLOADER_SHA256", build_text)
         self.assertIn("sha256sum -c -", build_text)

@@ -232,6 +232,12 @@ def protocol_version(control: Path, patched: Path) -> int:
     return version
 
 
+def warn(message: str) -> None:
+    """stderr; in GitHub Actions also an annotation, so a pack without its extras shows on the run."""
+    prefix = "::warning::" if os.environ.get("GITHUB_ACTIONS") == "true" else ""
+    print(f"{prefix}make_pack: {message}", file=sys.stderr)
+
+
 def changed_extras(stock_dir: Path | None, control: Path, patched: Path, allow_unreproduced: bool) -> dict[str, Path]:
     """The extra files the patch changed, where the pack may replace them."""
     found = {}
@@ -244,10 +250,10 @@ def changed_extras(stock_dir: Path | None, control: Path, patched: Path, allow_u
         if stock_dir is not None:
             stock = stock_dir / rel
             if not stock.is_file():
-                print(f"make_pack: the release has no {rel}; the pack leaves it out", file=sys.stderr)
+                warn(f"the release has no {rel}; the pack leaves it out")
                 continue
             if sha256_file(stock) != sha256_file(before) and not allow_unreproduced:
-                print(f"make_pack: the control build does not reproduce the stock {rel}; the pack leaves it stock", file=sys.stderr)
+                warn(f"the control build does not reproduce the stock {rel}; the pack leaves it stock")
                 continue
         found[rel] = after
     return found
