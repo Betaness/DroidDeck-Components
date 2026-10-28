@@ -261,6 +261,8 @@ jobs:
           done
           sudo chown -R "$(id -u):$(id -g)" build
           sha256sum build/*/files/lib/wine/aarch64-unix/ntdll.so build/*/files/bin-arm64/wineserver
+          # the control winex11.so hash is what a stock file is compared with when no stock reference is at hand
+          sha256sum build/*/files/lib/wine/aarch64-unix/winex11.so || true
 
       - name: Make the pack
         run: |
@@ -275,6 +277,9 @@ jobs:
             --version-line "$VERSION_LINE" --control build/control --patched build/patched \
             --source-json "$source_json" --patch-series "$SERIES" --out out "${match[@]}")
           echo "Pack \`$id\` from $FLAVOR $TAG" >> "$GITHUB_STEP_SUMMARY"
+          extras=$(zstd -qdc "out/$id.tzst" | tar -xOf - pack.json | python3 -c 'import json, sys; print(" ".join(sorted(json.load(sys.stdin).get("extras", {}))) or "none")')
+          stock=$([ -n "${STOCK_DIR:-}" ] && echo "checked against the stock files" || echo "matched by source, extras not checked against a stock file")
+          echo "Extras of \`$id\`: $extras ($stock)" >> "$GITHUB_STEP_SUMMARY"
           ls -l out
 
       - name: Smoke-test the pack on the release it was made for
