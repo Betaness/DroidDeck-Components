@@ -1,0 +1,38 @@
+name: Fork semaphore-pool watch
+
+# Only on the fork Betaness/DroidDeck-Components: every hour, look for Valve Proton (Experimental, stable and the
+# newest bleeding-edge tag), GE-Proton and Proton-CachyOS builds without a fork semaphore-pool pack, build them and
+# publish each to a fork prerelease. The work is in fork-sempool-packs.yml on the semaphore-pool-flavors branch,
+# next to the patch series and build scripts. Nothing is written to the upstream repository.
+# GitHub turns scheduled workflows off after 60 days without a commit to the repository.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'One tag to build; empty = the newest builds without a fork pack'
+        required: false
+        default: ''
+      publish:
+        description: 'Publish the packs to fork prereleases'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-sempool-watch
+  cancel-in-progress: false
+
+jobs:
+  packs:
+    if: ${{ github.repository == 'Betaness/DroidDeck-Components' }}
+    uses: Betaness/DroidDeck-Components/.github/workflows/fork-sempool-packs.yml@semaphore-pool-flavors
+    with:
+      code_ref: semaphore-pool-flavors
+      flavor: all
+      ref: ${{ inputs.ref || '' }}
+      publish: ${{ github.event_name == 'schedule' || inputs.publish }}
