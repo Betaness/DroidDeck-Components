@@ -249,6 +249,16 @@ class ForkCheckTest(unittest.TestCase):
         self.assertIn(f"- `{twin['id']}` (same wine commit and SDK image) has the same stock files", lines)
         self.assertIn(f"- `{other['id']}` (same wine commit and SDK image) has other stock files", lines)
 
+    def test_packs_of_other_builds_with_the_same_stock_files_are_named(self):
+        upstream = {"packs": [fork_entry("valve", "experimental-11.0-20261027b", 1, "a")]}
+        fork = [fork_entry("valve", "experimental-11.0-20261027b", 2, "a", wine="1" * 40),
+                fork_entry("valve", "experimental-11.0-20261014", 2, "c", wine="1" * 40)]
+        lines, ok = discover.fork_check(self.entry, upstream, fork)
+        self.assertTrue(ok)
+        self.assertIn("not checked", lines[0])
+        self.assertEqual(lines[1], f"- packs of other builds with the same stock ntdll.so and wineserver: upstream's `{upstream['packs'][0]['id']}`, "
+                                   f"the fork's `{fork[0]['id']}`; where the app has one of them, it already matches this build exactly")
+
     def test_release_asset_packs(self):
         entry = fork_entry("ge", "GE-Proton11-12", 100, "a", asset="GE-Proton11-12-aarch64.tar.gz")
         entry["source_match"] = False

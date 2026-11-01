@@ -184,8 +184,11 @@ reads `fork.json`:
    an anonymous Steam depot fetch (the bleeding-edge tag reads the `bleeding-edge` branch) and a
    stock check after `make_pack.py`: upstream's pack of the same build, which devices have matched
    exactly, must have the same stock hashes and exports as this control build, and so must the
-   Steam depot when it is at this very build. Fork packs of the same wine commit and SDK image are
-   listed for comparison. A mismatch fails the build.
+   Steam depot when it is at this very build (anonymous logins get no ARM64 Proton depot, "not
+   available from this account", so this needs the `STEAM_DEPOT_*` secrets). Fork packs of the same
+   wine commit and SDK image, and packs of other builds with the same stock ntdll.so and wineserver,
+   are listed: when the app already ships one of the latter, it matches the new build exactly and
+   no new APK is needed. A mismatch fails the build.
 3. Each pack goes to a prerelease of its own, `<release_prefix><key>-r<rev>`; the release notes and
    the run summary carry the two `extra.list` lines for the DroidDeck app. Builds that made no pack
    get a `.failed` marker in `state_release`. With the repository variable `SEMPOOL_REMIND_FAIL=1`

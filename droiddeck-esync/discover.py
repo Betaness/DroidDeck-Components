@@ -826,6 +826,19 @@ def fork_check(entry: dict, upstream: dict, entries: list[dict], depot: dict | N
             continue
         same = all(other["stock"].get(rel) == stock[rel] for rel in BINARIES)
         lines.append(f"- `{other.get('id')}` (same wine commit and SDK image) {'has the same' if same else 'has other'} stock files")
+    alike = []
+    for origin, pool in (("upstream's", packs if isinstance(packs, list) else []), ("the fork's", entries)):
+        for other in pool:
+            theirs = other.get("source") if isinstance(other, dict) and isinstance(other.get("source"), dict) else None
+            other_stock = other.get("stock") if isinstance(other, dict) and isinstance(other.get("stock"), dict) else {}
+            if theirs is None or other.get("id") == entry["id"] or other.get("flavor") != entry["flavor"] \
+                    or (theirs.get("ref"), theirs.get("asset", "")) == (source.get("ref"), source.get("asset", "")) \
+                    or not all(other_stock.get(rel) == stock[rel] for rel in BINARIES):
+                continue
+            alike.append(f"{origin} `{other.get('id')}`")
+    if alike:
+        lines.append(f"- packs of other builds with the same stock ntdll.so and wineserver: {', '.join(alike)}; "
+                     "where the app has one of them, it already matches this build exactly")
     head = ("checked against " + " and ".join(checked)) if checked else \
         "not checked against stock files (no upstream pack, Steam depot or release asset for this build yet)"
     return [f"Stock check: {head}" + ("" if ok else "; **FAILED**"), *lines], ok
