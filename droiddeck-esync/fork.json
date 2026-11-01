@@ -26,5 +26,13 @@
    "ge": 1,
    "valve": 1
   }
+ },
+ "adopt": {
+  "fork_rev": 100,
+  "rev": 2,
+  "patch_sha256": {
+   "cachyos-11": "049ff7fafa02c260d16388fe87c082d0bf6091419170eb007108a0a38e1919b5",
+   "valve-11": "ff57af5aba3ccd6393ad27e3dbe1cd1e7bc8285a5b605f851fe58aa6a1d4f011"
+  }
  }
 }

@@ -176,10 +176,13 @@ reads `fork.json`:
    with `release_prefix`, plus the `.failed` markers of the last day in `state_release`.
    `discover.py fork-matrix` lists the newest `keep` builds of the flavors in `fork.json` (as
    `matrix` does) and the newest `bleeding_edge` tag, and drops the builds that already have a fork
-   pack at the flavor's `rev` of `flavors.json` or above. A bleeding-edge tag is also dropped when
-   a fork pack exists for the same wine commit and SDK image. Every new pack gets `fork.json` `rev`
-   (100), above any upstream rev, so a fork pack never shares an id with an upstream one and wins
-   over upstream's pack of the same build in the guest.
+   pack at `fork.json` `rev` or above. While `rev` is `adopt.fork_rev`, the fork packs made before
+   the watch (`adopt.rev` 2 with their series' digest in `adopt.patch_sha256`) count too; other
+   older packs under the same release prefix, like the r3 winex11 cache experiment, do not.
+   Raising `rev` therefore rebuilds every build. A bleeding-edge tag is also dropped when a
+   counted fork pack exists for the same wine commit and SDK image. Every new pack gets
+   `fork.json` `rev` (100), above any upstream rev, so a fork pack never shares an id with an
+   upstream one and wins over upstream's pack of the same build in the guest.
 2. The build job is the one above (the shared steps must stay identical; the tests check it), plus
    an anonymous Steam depot fetch (the bleeding-edge tag reads the `bleeding-edge` branch) and a
    stock check after `make_pack.py`: upstream's pack of the same build, which devices have matched
@@ -191,7 +194,10 @@ reads `fork.json`:
    no new APK is needed. A mismatch fails the build.
 3. Each pack goes to a prerelease of its own, `<release_prefix><key>-r<rev>`; the release notes and
    the run summary carry the two `extra.list` lines for the DroidDeck app. Builds that made no pack
-   get a `.failed` marker in `state_release`. With the repository variable `SEMPOOL_REMIND_FAIL=1`
+   get a `.failed` marker in `state_release`, and so does a build whose release already holds a
+   `<id>.tzst` with other bytes (it is never replaced); an archive published without its entry gets
+   the entry. The `STEAM_DEPOT_*` secrets reach the depot step only (the watch passes just those
+   two), and the depot log is not uploaded, since it names the account. With the repository variable `SEMPOOL_REMIND_FAIL=1`
    a run that published packs ends as failed, so GitHub mails the owner.
 4. `discover.py fork-upstream` warns when upstream's `rev` of a flavor or one of the patches
    this fork shares with upstream changed: carry the change into the fork's series and raise

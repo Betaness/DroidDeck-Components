@@ -21,6 +21,7 @@ FORK = {
                       "keep": 1, "depot_app": "4427310", "depot_branch": "bleeding-edge"},
     "upstream": {"repo": "Droid-Deck/DroidDeck-Components", "ref": "main", "index_release": "droiddeck-esync-index",
                  "rev": {"ge": 1, "valve": 1}},
+    "adopt": {"fork_rev": 100, "rev": 2, "patch_sha256": {"valve-11": "f" * 64}},
 }
 
 
@@ -88,13 +89,16 @@ class ForkDiscoverTest(unittest.TestCase):
                        {"bleeding_edge": dict(FORK["bleeding_edge"], flavor="ge")},
                        {"bleeding_edge": dict(FORK["bleeding_edge"], tag="(")},
                        {"bleeding_edge": dict(FORK["bleeding_edge"], depot_branch="a b")},
-                       {"upstream": dict(FORK["upstream"], rev={"nope": 1})}):
+                       {"upstream": dict(FORK["upstream"], rev={"nope": 1})},
+                       {"adopt": dict(FORK["adopt"], rev=100)}, {"adopt": dict(FORK["adopt"], patch_sha256="f" * 64)},
+                       {"adopt": dict(FORK["adopt"], patch_sha256={"valve-11": "f"})},
+                       {"adopt": {"fork_rev": 100, "rev": 2}}):
             self.fork_file.write_text(json.dumps(dict(FORK, **change)))
             with self.assertRaises(discover.PackError, msg=change):
                 discover.load_fork(self.fork_file, self.flavors)
 
     def test_only_builds_without_a_fork_pack_and_the_newest_bleeding_edge_tag(self):
-        entries = [fork_entry("valve", "experimental-11.0-20260917b", 2, "a"), fork_entry("valve", "proton-11.0-10", 3, "b"),
+        entries = [fork_entry("valve", "experimental-11.0-20260917b", 2, "a"), fork_entry("valve", "proton-11.0-10", 100, "b"),
                    fork_entry("valve", "proton-11.0-2b", 1, "c"),
                    fork_entry("ge", "GE-Proton11-7", 2, "a", asset="GE-Proton11-7-aarch64.tar.xz")]
         rows, log = self.run_fork(entries)
@@ -105,8 +109,30 @@ class ForkDiscoverTest(unittest.TestCase):
         self.assertEqual((bleeding["depot_app"], bleeding["depot_branch"], bleeding["token"]), ("4427310", "bleeding-edge", f"{BLEEDING}-arm64"))
         self.assertEqual({row["depot_branch"] for row in rows if row["tag"] != BLEEDING}, {""})
         self.assertIn("valve experimental-11.0-20260917b: the fork has a pack at rev 2", log)
-        self.assertIn("valve proton-11.0-10: the fork has a pack at rev 3", log)
+        self.assertIn("valve proton-11.0-10: the fork has a pack at rev 100", log)
         self.assertNotIn(BLEEDING_OLD, json.dumps(rows))
+
+    def test_only_adopted_and_current_rev_packs_count(self):
+        def other_series(entry, series="valve-11"):
+            entry["patch"].update(series=series, sha256="0" * 64 if series == "valve-11" else "f" * 64)
+            return entry
+
+        # an r3 experiment (another patch series under the same release prefix) is not a pack of this fork's series
+        entries = [fork_entry("valve", "experimental-11.0-20260917b", 3, "a"),
+                   other_series(fork_entry("valve", "proton-11.0-10", 2, "b")),
+                   fork_entry("valve", "proton-11.0-2b", 2, "c"),
+                   other_series(fork_entry("valve", "experimental-11.0-20260910b", 2, "d"), series="cachyos-11")]
+        rows, log = self.run_fork(entries, flavor="valve")
+        tags = sorted(row["tag"] for row in rows)
+        self.assertEqual(tags, sorted([BLEEDING, "experimental-11.0-20260910b", "experimental-11.0-20260917b", "proton-11.0-10"]))
+        self.assertIn("valve proton-11.0-2b: the fork has a pack at rev 2", log)
+        # raising fork.json rev rebuilds every build, the adopted r2 and the r100 packs too
+        entries.append(fork_entry("valve", "experimental-11.0-20260910b", 100, "d"))
+        self.fork["rev"] = 101
+        rows, _ = self.run_fork(entries, flavor="valve")
+        self.assertEqual(sorted(row["tag"] for row in rows),
+                         sorted([BLEEDING, "experimental-11.0-20260910b", "experimental-11.0-20260917b", "proton-11.0-10", "proton-11.0-2b"]))
+        self.assertTrue(all(row["rev"] == 101 for row in rows))
 
     def test_a_bleeding_edge_tag_whose_wine_and_sdk_already_have_a_pack_is_skipped(self):
         entries = [fork_entry("valve", "experimental-11.0-20260917b", 2, "a", wine="f" * 40)]
@@ -361,6 +387,15 @@ class ForkWorkflowTest(unittest.TestCase):
         self.assertIs(depot["continue-on-error"], True)
         self.assertIn("sha256sum -c -", depot["run"])
         self.assertNotIn("${login[*]", depot["run"])
+        self.assertEqual(set(triggers["workflow_call"]["secrets"]), {"STEAM_DEPOT_USER", "STEAM_DEPOT_TOKEN"})
+        # DepotDownloader names the account it logs in with; its log stays out of the public artifacts
+        logs = [step for step in jobs["build"]["steps"] if step.get("with", {}).get("name", "").startswith("droiddeck-esync-logs-")]
+        self.assertEqual(len(logs), 1)
+        self.assertNotIn("depot", logs[0]["with"]["path"])
+        # a pack already in its release is never replaced, and does not come back every hour either
+        self.assertIn('rm -rf "$dir"', upload["run"])
+        self.assertIn('"$dir/$id.json" --clobber', upload["run"])
+        self.assertNotIn('"$dir/$id.tzst" --clobber', upload["run"])
 
 
 if __name__ == "__main__":

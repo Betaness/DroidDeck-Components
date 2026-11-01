@@ -22,6 +22,11 @@ on:
       publish:
         type: boolean
         default: true
+    secrets:
+      STEAM_DEPOT_USER:
+        required: false
+      STEAM_DEPOT_TOKEN:
+        required: false
     outputs:
       published:
         description: 'The pack ids published by this run'
@@ -66,14 +71,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 droiddeck-esync/discover.py fork-fetch --repo "$GITHUB_REPOSITORY" --out fork-entries
+          for attempt in 1 2 3; do
+            rm -rf fork-entries
+            if python3 droiddeck-esync/discover.py fork-fetch --repo "$GITHUB_REPOSITORY" --out fork-entries; then
+              exit 0
+            fi
+            [ "$attempt" = 3 ] || sleep 60
+          done
+          exit 1
 
       - name: Compare with upstream's patch series and revs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 droiddeck-esync/discover.py fork-upstream > upstream-notes.txt
+          for attempt in 1 2 3; do
+            if python3 droiddeck-esync/discover.py fork-upstream > upstream-notes.txt; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              exit 1
+            fi
+            sleep 60
+          done
           while IFS= read -r note; do
             echo "::warning::$note"
             echo "- $note" >> "$GITHUB_STEP_SUMMARY"
@@ -87,8 +107,14 @@ jobs:
           REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
-          python3 droiddeck-esync/discover.py fork-matrix --flavor "$FLAVOR" --ref "$REF" --entries fork-entries \
-            --revoked droiddeck-esync/revoked.txt
+          for attempt in 1 2 3; do
+            if python3 droiddeck-esync/discover.py fork-matrix --flavor "$FLAVOR" --ref "$REF" --entries fork-entries \
+                --revoked droiddeck-esync/revoked.txt; then
+              exit 0
+            fi
+            [ "$attempt" = 3 ] || sleep 60
+          done
+          exit 1
 
       - uses: actions/upload-artifact@v4
         with:
@@ -397,7 +423,6 @@ jobs:
           name: droiddeck-esync-logs-${{ matrix.key }}
           path: |
             prep.log
-            depot.log
             build/work-*/*.log
             smoke/*.log
           if-no-files-found: ignore
@@ -465,13 +490,23 @@ jobs:
             rm -f published.tzst
             if gh release download "$tag" -R "$GITHUB_REPOSITORY" -p "$id.tzst" -O published.tzst >/dev/null 2>&1; then
               if cmp -s published.tzst "$dir/$id.tzst"; then
-                echo "::notice::$id is already published in $tag"
+                if gh release view "$tag" -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep -xF "$id.json" >/dev/null; then
+                  echo "::notice::$id is already published in $tag"
+                  continue
+                fi
+                # an earlier upload stopped after the archive; without its entry the watch would rebuild it every hour
+                gh release upload "$tag" -R "$GITHUB_REPOSITORY" "$dir/$id.json" --clobber
+                echo "::notice::$id.tzst was in $tag without its entry; uploaded $id.json"
+              else
+                # the release keeps the bytes it has (an extra.list line may pin them); dropping the artifact gives the
+                # build a failure marker below, so the watch does not rebuild it every hour
+                echo "::warning::$id.tzst is already published in $tag with other bytes; it stays (raise fork.json rev to replace it), and the watch holds this build back for a day"
+                rm -rf "$dir"
                 continue
               fi
-              echo "::warning::$id.tzst is already published in $tag with other bytes; it stays (raise fork.json rev to replace it)"
-              continue
+            else
+              gh release upload "$tag" -R "$GITHUB_REPOSITORY" "$dir/$id.tzst" "$dir/$id.json"
             fi
-            gh release upload "$tag" -R "$GITHUB_REPOSITORY" "$dir/$id.tzst" "$dir/$id.json"
             published+=("$id")
             cat "notes/$key.lines" >> extra-lines.txt
             echo "Published \`$id\` to $tag" >> "$GITHUB_STEP_SUMMARY"

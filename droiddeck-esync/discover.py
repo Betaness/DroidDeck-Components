@@ -626,7 +626,27 @@ def load_fork(path: Path, flavors: dict) -> dict:
         revs = upstream.get("rev")
         if not isinstance(revs, dict) or not all(name in flavors["flavors"] and type(rev) is int for name, rev in revs.items()):
             fail("upstream.rev must give the upstream rev of flavors")
+    adopt = data.get("adopt")
+    if adopt is not None:
+        if not isinstance(adopt, dict) or type(adopt.get("fork_rev")) is not int or type(adopt.get("rev")) is not int \
+                or not 1 <= adopt["rev"] < adopt["fork_rev"] or not isinstance(adopt.get("patch_sha256"), dict) \
+                or not all(isinstance(series, str) and SERIES.fullmatch(series) and isinstance(digest, str)
+                           and re.fullmatch(r"[0-9a-f]{64}", digest) for series, digest in adopt["patch_sha256"].items()):
+            fail("adopt needs fork_rev, a rev below it and the patch_sha256 (series: digest) of the packs it adopts")
     return data
+
+
+def counts_as_built(entry: dict, fork: dict) -> bool:
+    """A fork pack at fork.json rev or above, or one of the older fork packs adopt names (their rev and patch series
+    digest) while rev is still adopt.fork_rev. Raising rev rebuilds every build, the adopted ones too; other older
+    fork packs (an experiment with another series under the same release prefix) never count."""
+    rev = entry.get("rev") if type(entry.get("rev")) is int else 0
+    if rev >= fork["rev"]:
+        return True
+    adopt = fork.get("adopt")
+    patch = entry.get("patch") if isinstance(entry.get("patch"), dict) else {}
+    return bool(adopt) and fork["rev"] == adopt["fork_rev"] and rev == adopt["rev"] and isinstance(patch.get("series"), str) \
+        and adopt["patch_sha256"].get(patch["series"]) == patch.get("sha256")
 
 
 def fork_fetch(repo: str, fork: dict, out: Path, now: datetime) -> tuple[int, int]:
@@ -727,6 +747,7 @@ def fork_discover(flavors: dict, fork: dict, selected: str, ref: str, entries: l
     if selected != "all" and selected not in fork["flavors"]:
         raise PackError(f"the fork does not build {selected} packs")
     names = [name for name in chosen_flavors(flavors, selected) if name in fork["flavors"]]
+    entries = [entry for entry in entries if counts_as_built(entry, fork)]
     done = built({"packs": entries})
     bleeding = fork.get("bleeding_edge")
     digests = {}
@@ -758,7 +779,7 @@ def fork_discover(flavors: dict, fork: dict, selected: str, ref: str, entries: l
             if revoked_build(row, revoked):
                 print(f"discover: {label}: revoked at rev {row['rev']}", file=sys.stderr)
                 continue
-            if have >= cfg["rev"]:
+            if have:
                 print(f"discover: {label}: the fork has a pack at rev {have}", file=sys.stderr)
                 continue
             if not ref and failure_marker(row, digests) in failed:
@@ -767,7 +788,7 @@ def fork_discover(flavors: dict, fork: dict, selected: str, ref: str, entries: l
                 continue
             if row["key"] not in early:
                 wine, image = tag_source(cfg["repo"], row["tag"], flavors["sdk_image"])
-                twin = same_source(flavor, wine, image, entries, cfg["rev"])
+                twin = same_source(flavor, wine, image, entries, 0)
                 if twin:
                     print(f"discover: {label}: wine {wine[:12]} with {image} already has {twin}", file=sys.stderr)
                     continue
