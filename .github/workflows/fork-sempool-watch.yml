@@ -36,3 +36,7 @@ jobs:
       flavor: all
       ref: ${{ inputs.ref || '' }}
       publish: ${{ github.event_name == 'schedule' || inputs.publish }}
+    # Only the two optional Steam depot secrets, read by the depot step alone; unset they stay empty.
+    secrets:
+      STEAM_DEPOT_USER: ${{ secrets.STEAM_DEPOT_USER }}
+      STEAM_DEPOT_TOKEN: ${{ secrets.STEAM_DEPOT_TOKEN }}
