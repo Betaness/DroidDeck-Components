@@ -165,6 +165,39 @@ then `make_pack.py`. `make_pack.py` reads the guest script from a DroidDeck chec
 `test.yml` does or point at an existing checkout:
 `DROIDDECK_ESYNC_GUEST=<DroidDeck>/tools/linuxfs/overlay/usr/local/bin/droiddeck-esync python3 -m unittest discover -s tests`.
 
+## Fork packs
+
+A fork that carries its own patch series (here the semaphore pool, `0002`) builds its own packs
+without the upstream index or signing key. `.github/workflows/fork-sempool-watch.yml` on the fork's
+`main` runs every hour and calls `.github/workflows/fork-sempool-packs.yml` on this branch, which
+reads `fork.json`:
+
+1. `discover.py fork-fetch` reads the `<id>.json` entries of every fork release whose tag starts
+   with `release_prefix`, plus the `.failed` markers of the last day in `state_release`.
+   `discover.py fork-matrix` lists the newest `keep` builds of the flavors in `fork.json` (as
+   `matrix` does) and the newest `bleeding_edge` tag, and drops the builds that already have a fork
+   pack at the flavor's `rev` of `flavors.json` or above. A bleeding-edge tag is also dropped when
+   a fork pack exists for the same wine commit and SDK image. Every new pack gets `fork.json` `rev`
+   (100), above any upstream rev, so a fork pack never shares an id with an upstream one and wins
+   over upstream's pack of the same build in the guest.
+2. The build job is the one above (the shared steps must stay identical; the tests check it), plus
+   an anonymous Steam depot fetch (the bleeding-edge tag reads the `bleeding-edge` branch) and a
+   stock check after `make_pack.py`: upstream's pack of the same build, which devices have matched
+   exactly, must have the same stock hashes and exports as this control build, and so must the
+   Steam depot when it is at this very build. Fork packs of the same wine commit and SDK image are
+   listed for comparison. A mismatch fails the build.
+3. Each pack goes to a prerelease of its own, `<release_prefix><key>-r<rev>`; the release notes and
+   the run summary carry the two `extra.list` lines for the DroidDeck app. Builds that made no pack
+   get a `.failed` marker in `state_release`. With the repository variable `SEMPOOL_REMIND_FAIL=1`
+   a run that published packs ends as failed, so GitHub mails the owner.
+4. `discover.py fork-upstream` warns when upstream's `rev` of a flavor or one of the patches
+   this fork shares with upstream changed: carry the change into the fork's series and raise
+   `fork.json` `rev`.
+
+A pack built from a bleeding-edge tag exists before Steam ships the next Proton Experimental;
+the guest picks it only by an exact match, that is when the shipped build has the same ntdll.so
+and wineserver. Manual runs: Actions -> Fork semaphore-pool watch (on `main`) -> one tag.
+
 ## Setup
 
 - Signing key: create the repository environment `droiddeck-esync-signing` (Settings ->

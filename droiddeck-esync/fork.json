@@ -1,0 +1,30 @@
+{
+ "format": 1,
+ "repo": "Betaness/DroidDeck-Components",
+ "rev": 100,
+ "flavors": [
+  "cachyos",
+  "ge",
+  "valve"
+ ],
+ "release_prefix": "droiddeck-sempool-",
+ "state_release": "droiddeck-sempool-watch",
+ "bleeding_edge": {
+  "flavor": "valve",
+  "prefix": "experimental-bleeding-edge-11.0-",
+  "tag": "^experimental-bleeding-edge-11\\.0-\\d+-\\d{8}-p[0-9a-f]+-w[0-9a-f]+-d[0-9a-f]+-v[0-9a-f]+$",
+  "keep": 1,
+  "depot_app": "4427310",
+  "depot_branch": "bleeding-edge"
+ },
+ "upstream": {
+  "repo": "Droid-Deck/DroidDeck-Components",
+  "ref": "main",
+  "index_release": "droiddeck-esync-index",
+  "rev": {
+   "cachyos": 1,
+   "ge": 1,
+   "valve": 1
+  }
+ }
+}

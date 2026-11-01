@@ -1,0 +1,524 @@
+name: Fork semaphore-pool packs
+
+# A fork's own droiddeck-esync packs (rev from droiddeck-esync/fork.json, this branch's patch series).
+# The fork's main runs it every hour through fork-sempool-watch.yml; it can also be started by hand here.
+# It finds the Proton builds without a fork pack, builds each one with the control build checked against
+# the stock files at hand, and publishes every pack to a prerelease of its own on the fork. It never
+# writes to the upstream repository or its signed index.
+
+on:
+  workflow_call:
+    inputs:
+      code_ref:
+        description: 'Branch with the build scripts'
+        type: string
+        default: semaphore-pool-flavors
+      flavor:
+        type: string
+        default: all
+      ref:
+        type: string
+        default: ''
+      publish:
+        type: boolean
+        default: true
+    outputs:
+      published:
+        description: 'The pack ids published by this run'
+        value: ${{ jobs.publish.outputs.published }}
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: 'Proton flavor to look at'
+        type: choice
+        options: [ all, valve, ge, cachyos ]
+        default: all
+      ref:
+        description: 'One tag to build (e.g. experimental-11.0-20261101); empty = the newest builds without a fork pack'
+        required: false
+        default: ''
+      publish:
+        description: 'Publish the packs to fork prereleases'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  discover:
+    if: ${{ github.repository != 'Droid-Deck/DroidDeck-Components' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+      count: ${{ steps.discover.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.code_ref || github.sha }}
+          persist-credentials: false
+
+      - name: Read the fork's packs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 droiddeck-esync/discover.py fork-fetch --repo "$GITHUB_REPOSITORY" --out fork-entries
+
+      - name: Compare with upstream's patch series and revs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 droiddeck-esync/discover.py fork-upstream > upstream-notes.txt
+          while IFS= read -r note; do
+            echo "::warning::$note"
+            echo "- $note" >> "$GITHUB_STEP_SUMMARY"
+          done < upstream-notes.txt
+
+      - name: Find the Proton builds without a fork pack
+        id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FLAVOR: ${{ inputs.flavor || 'all' }}
+          REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          python3 droiddeck-esync/discover.py fork-matrix --flavor "$FLAVOR" --ref "$REF" --entries fork-entries \
+            --revoked droiddeck-esync/revoked.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fork-entries
+          path: fork-entries/
+          overwrite: true
+          if-no-files-found: error
+
+  build:
+    name: ${{ matrix.flavor }} ${{ matrix.tag }}
+    needs: discover
+    if: needs.discover.outputs.count != '0'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    env:
+      FLAVOR: ${{ matrix.flavor }}
+      REPO: ${{ matrix.repo }}
+      TAG: ${{ matrix.tag }}
+      ASSET: ${{ matrix.asset }}
+      VERSION_TOKEN: ${{ matrix.token }}
+      DEPOT_APP: ${{ matrix.depot_app }}
+      DEPOT_BRANCH: ${{ matrix.depot_branch }}
+      REV: ${{ matrix.rev }}
+      SERIES: ${{ matrix.series }}
+      PROFILE: ${{ matrix.profile }}
+      SOURCE_MATCH: ${{ matrix.source_match }}
+      SUBMODULES: ${{ matrix.submodules }}
+      CLONE: ${{ matrix.clone }}
+      PREP: ${{ matrix.prep }}
+      BUILD_DIR: ${{ matrix.build_dir }}
+      HAVE_DEPOT_LOGIN: ${{ secrets.STEAM_DEPOT_USER != '' && secrets.STEAM_DEPOT_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.code_ref || github.sha }}
+          persist-credentials: false
+
+      - name: Fetch the guest script the packs are measured with
+        uses: actions/checkout@v4
+        with:
+          repository: Droid-Deck/DroidDeck
+          ref: main
+          path: droiddeck
+          persist-credentials: false
+          sparse-checkout: tools/linuxfs/overlay/usr/local/bin/droiddeck-esync
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: fork-entries
+          path: fork-entries
+
+      - name: Check the build script and the patch series
+        run: |
+          set -euo pipefail
+          test -f droiddeck-esync/build-pack.sh
+          test -f droiddeck/tools/linuxfs/overlay/usr/local/bin/droiddeck-esync
+          ls "droiddeck-esync/patches/$SERIES"/*.patch
+
+      - name: Install the host tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq autoconf automake git patch perl python3 rsync unzip wget xz-utils zstd >/dev/null
+
+      - name: Fetch the stock binaries
+        if: matrix.asset != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf stock-download stock
+          mkdir -p stock-download stock
+          gh release download "$TAG" -R "$REPO" -p "$ASSET" -D stock-download
+          tar -xf "stock-download/$ASSET" -C stock
+          rm -rf stock-download
+          mapfile -t tops < <(find stock -mindepth 1 -maxdepth 1 -type d)
+          if [ "${#tops[@]}" != 1 ]; then
+            echo "::error::$ASSET does not hold exactly one Proton directory"
+            exit 1
+          fi
+          dir=$(realpath "${tops[0]}")
+          test -f "$dir/files/lib/wine/aarch64-unix/ntdll.so"
+          test -f "$dir/files/bin-arm64/wineserver"
+          line=$(head -n1 "$dir/version" | tr -d '\r')
+          if ! grep -qE '^[0-9]+[[:space:]]+[[:graph:]]+' <<<"$line"; then
+            echo "::error::$ASSET has no usable version file"
+            exit 1
+          fi
+          echo "Stock $line"
+          {
+            echo "STOCK_DIR=$dir"
+            echo "VERSION_LINE=$line"
+          } >> "$GITHUB_ENV"
+
+      # Anonymous unless STEAM_DEPOT_USER and STEAM_DEPOT_TOKEN are set. The depot is the stock reference
+      # when Steam's branch is at this very build; at another build it is only reported.
+      - name: Fetch the stock depot (Valve only)
+        if: matrix.flavor == 'valve' && matrix.depot_app != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPOT_DOWNLOADER_TAG: DepotDownloader_3.4.0
+          DEPOT_DOWNLOADER_SHA256: ${{ vars.DEPOT_DOWNLOADER_SHA256 || 'd9fb612ccebc1db8eeea3b4045d2221ec70431381393ce908fb72f01d4f9c812' }}
+          STEAM_DEPOT_USER: ${{ secrets.STEAM_DEPOT_USER }}
+          STEAM_DEPOT_TOKEN: ${{ secrets.STEAM_DEPOT_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! grep -qxE '[0-9a-f]{64}' <<<"$DEPOT_DOWNLOADER_SHA256"; then
+            echo "::warning::DEPOT_DOWNLOADER_SHA256 is not a sha256"
+            exit 0
+          fi
+          rm -rf depotdownloader depot
+          gh release download "$DEPOT_DOWNLOADER_TAG" -R SteamRE/DepotDownloader -p 'DepotDownloader-linux-arm64.zip' -D depotdownloader
+          echo "$DEPOT_DOWNLOADER_SHA256  depotdownloader/DepotDownloader-linux-arm64.zip" | sha256sum -c -
+          unzip -q depotdownloader/DepotDownloader-linux-arm64.zip -d depotdownloader
+          chmod +x depotdownloader/DepotDownloader
+          printf '%s\n' version files/lib/wine/aarch64-unix/ntdll.so files/bin-arm64/wineserver > depot-files.txt
+          login=()
+          how=anonymously
+          if [ "$HAVE_DEPOT_LOGIN" = true ]; then
+            login=(-username "$STEAM_DEPOT_USER" -password "$STEAM_DEPOT_TOKEN")
+            how="with the login"
+          fi
+          branch=()
+          if [ -n "$DEPOT_BRANCH" ]; then
+            branch=(-beta "$DEPOT_BRANCH")
+          fi
+          if ! timeout 30m depotdownloader/DepotDownloader -app "$DEPOT_APP" -os linux -all-archs "${login[@]}" "${branch[@]}" \
+              -filelist depot-files.txt -dir depot </dev/null > depot.log 2>&1; then
+            tail -n 30 depot.log
+            echo "::notice::the Steam depot of app $DEPOT_APP${DEPOT_BRANCH:+ ($DEPOT_BRANCH)} could not be fetched $how"
+            exit 0
+          fi
+          tail -n 5 depot.log
+          if [ ! -f depot/files/lib/wine/aarch64-unix/ntdll.so ] || [ ! -f depot/files/bin-arm64/wineserver ]; then
+            echo "::notice::the Steam depot of app $DEPOT_APP has no ntdll.so or wineserver"
+            exit 0
+          fi
+          line=$(head -n1 depot/version | tr -d '\r')
+          token=$(awk '{ print $2 }' <<<"$line")
+          echo "Depot $line"
+          echo "DEPOT_DIR=$PWD/depot" >> "$GITHUB_ENV"
+          echo "DEPOT_LABEL=app $DEPOT_APP, branch ${DEPOT_BRANCH:-public}" >> "$GITHUB_ENV"
+          if [ "$token" != "$VERSION_TOKEN" ]; then
+            echo "::notice::app $DEPOT_APP${DEPOT_BRANCH:+ ($DEPOT_BRANCH)} is at $token, not $VERSION_TOKEN; this pack matches by source"
+            exit 0
+          fi
+          {
+            echo "STOCK_DIR=$PWD/depot"
+            echo "VERSION_LINE=$line"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare the wine source
+        run: |
+          set -euo pipefail
+          git config --global user.name "ci"
+          git config --global user.email "ci@users.noreply.github.com"
+          rm -rf src
+          git init -q src
+          git -C src remote add origin "https://github.com/$REPO.git"
+          git -C src fetch -q --depth 1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          git -C src checkout -q "refs/tags/$TAG"
+          read -r -a modules <<<"$SUBMODULES"
+          case "$CLONE" in
+            shallow) history=(--depth 1) ;;
+            treeless) history=(--filter=tree:0) ;;
+            *) echo "::error::unknown clone mode $CLONE"; exit 1 ;;
+          esac
+          git -C src submodule update -q --init "${history[@]}" -- "${modules[@]}"
+          if [ -n "$PREP" ]; then
+            if ! (cd src && bash "$PREP") > prep.log 2>&1; then
+              tail -n 200 prep.log
+              echo "::error::$PREP failed"
+              exit 1
+            fi
+          fi
+          test -f src/wine/server/protocol.def
+          image=$(python3 droiddeck-esync/discover.py sdk-image src/Makefile.in)
+          commit=$(git -C src rev-parse HEAD)
+          wine_commit=$(git -C src rev-parse HEAD:wine)
+          line=${VERSION_LINE:-}
+          if [ -z "$line" ]; then
+            if [ -z "$VERSION_TOKEN" ]; then
+              echo "::error::no stock version file and no version token for $TAG"
+              exit 1
+            fi
+            line="$(git -C src log -1 --format=%ct HEAD) $VERSION_TOKEN"
+          fi
+          echo "SDK image $image, $REPO $commit, wine $wine_commit, version $line"
+          {
+            echo "SDK_IMAGE=$image"
+            echo "SOURCE_COMMIT=$commit"
+            echo "WINE_COMMIT=$wine_commit"
+            echo "VERSION_LINE=$line"
+            echo "SOURCE_DATE_EPOCH=${line%%[[:space:]]*}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the control and the patched binaries
+        run: |
+          set -euo pipefail
+          docker pull -q "$SDK_IMAGE"
+          for kind in control patched; do
+            work=$PWD/build/work-$kind
+            out=$PWD/build/$kind
+            sudo rm -rf "$work" "$out"
+            mkdir -p "$work" "$out"
+            if [ "$kind" = patched ]; then
+              bash droiddeck-esync/build-pack.sh prepare "$PWD/src/wine" "$work" "$PWD/droiddeck-esync/patches/$SERIES"
+            else
+              bash droiddeck-esync/build-pack.sh prepare "$PWD/src/wine" "$work"
+            fi
+            docker run --rm \
+              -v "$work:$BUILD_DIR" -v "$out:/out" -v "$PWD/droiddeck-esync/build-pack.sh:/build-pack.sh:ro" \
+              -w "$BUILD_DIR" -e HOME=/tmp -e LANG=C.UTF-8 -e JOBS="$(nproc)" \
+              -e SOURCE_DATE_EPOCH -e SYNC_PROFILE="$PROFILE" \
+              "$SDK_IMAGE" /bin/bash /build-pack.sh build "$BUILD_DIR" /out
+          done
+          sudo chown -R "$(id -u):$(id -g)" build
+          sha256sum build/*/files/lib/wine/aarch64-unix/ntdll.so build/*/files/bin-arm64/wineserver
+
+      - name: Make the pack
+        run: |
+          set -euo pipefail
+          source_json=$(python3 -c 'import json, os; print(json.dumps({"repo": os.environ["REPO"], "ref": os.environ["TAG"], "asset": os.environ["ASSET"], "commit": os.environ["SOURCE_COMMIT"], "wine_commit": os.environ["WINE_COMMIT"], "sdk_image": os.environ["SDK_IMAGE"]}, sort_keys=True))')
+          match=()
+          if [ -z "${STOCK_DIR:-}" ] && [ "$SOURCE_MATCH" = true ]; then
+            match=(--source-match)
+          fi
+          rm -rf out
+          id=$(python3 droiddeck-esync/make_pack.py --flavor "$FLAVOR" --rev "$REV" --stock-dir "${STOCK_DIR:-}" \
+            --version-line "$VERSION_LINE" --control build/control --patched build/patched \
+            --source-json "$source_json" --patch-series "$SERIES" --out out "${match[@]}")
+          echo "Pack \`$id\` from $FLAVOR $TAG" >> "$GITHUB_STEP_SUMMARY"
+          ls -l out
+
+      # upstream's pack of the same build was made the same way and has been seen to match the stock files
+      # on devices; a different control build here means this runner does not reproduce them.
+      - name: Check the control build against the stock files at hand
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEY: ${{ matrix.key }}
+        run: |
+          set -euo pipefail
+          id=$(basename out/*.tzst .tzst)
+          upstream_repo=$(python3 -c 'import json; print(json.load(open("droiddeck-esync/fork.json"))["upstream"]["repo"])')
+          upstream_tag=$(python3 -c 'import json; print(json.load(open("droiddeck-esync/fork.json"))["upstream"]["index_release"])')
+          rm -rf upstream check
+          mkdir -p upstream check
+          if ! gh release download "$upstream_tag" -R "$upstream_repo" -p index.json -D upstream >/dev/null 2>&1; then
+            echo "::notice::the upstream index could not be read; this pack is not compared with upstream's"
+          fi
+          depot=()
+          if [ -n "${DEPOT_DIR:-}" ]; then
+            depot=(--depot-dir "$DEPOT_DIR" --depot-label "$DEPOT_LABEL")
+          fi
+          set +e
+          python3 droiddeck-esync/discover.py fork-check --entry "out/$id.json" --entries fork-entries \
+            --upstream-index upstream/index.json "${depot[@]}" > "check/$KEY.md"
+          status=$?
+          set -e
+          cat "check/$KEY.md" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$status" != 0 ]; then
+            echo "::error::$id does not reproduce the stock files of this build"
+            exit 1
+          fi
+
+      - name: Smoke-test the pack on the release it was made for
+        if: matrix.asset != ''
+        run: |
+          set -euo pipefail
+          id=$(basename out/*.tzst .tzst)
+          docker run --rm -v "$PWD:/work" -w /work "$SDK_IMAGE" \
+            /opt/llvm-mingw/bin/aarch64-w64-mingw32-clang -O2 -o esstress.exe droiddeck-esync/tests/esstress.c
+          set +e
+          bash droiddeck-esync/smoke-test.sh "$STOCK_DIR" "out/$id.tzst" esstress.exe smoke
+          status=$?
+          set -e
+          case $status in
+            0) echo "Smoke test passed for \`$id\`" >> "$GITHUB_STEP_SUMMARY" ;;
+            3) echo "::warning::stock $TAG does not run on this runner, so $id could not be smoke-tested" ;;
+            *) echo "::error::$id failed the smoke test on $TAG"; exit 1 ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droiddeck-esync-pack-${{ matrix.key }}
+          path: out/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: droiddeck-esync-check-${{ matrix.key }}
+          path: check/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: droiddeck-esync-logs-${{ matrix.key }}
+          path: |
+            prep.log
+            depot.log
+            build/work-*/*.log
+            smoke/*.log
+          if-no-files-found: ignore
+
+  publish:
+    name: Publish the packs to fork prereleases
+    needs: [ discover, build ]
+    if: ${{ !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.count != '0' && inputs.publish && github.repository != 'Droid-Deck/DroidDeck-Components' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    concurrency:
+      group: fork-sempool-publish
+      cancel-in-progress: false
+    outputs:
+      published: ${{ steps.upload.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.code_ref || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: droiddeck-esync-pack-*
+          path: packs
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: droiddeck-esync-check-*
+          path: checks
+          merge-multiple: true
+
+      - name: Upload each pack to its own prerelease
+        id: upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATRIX: ${{ needs.discover.outputs.matrix }}
+          RUN: run ${{ github.run_id }}
+          BRANCH: ${{ inputs.code_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p packs checks notes
+          python3 droiddeck-esync/discover.py packs --matrix "$MATRIX" packs > packs.tsv
+          prefix=$(python3 -c 'import json; print(json.load(open("droiddeck-esync/fork.json"))["release_prefix"])')
+          bleeding_prefix=$(python3 -c 'import json; print(json.load(open("droiddeck-esync/fork.json")).get("bleeding_edge", {}).get("prefix", "-"))')
+          published=()
+          : > extra-lines.txt
+          while IFS=$'\t' read -r -u 3 flavor dir id; do
+            key=$(basename "$dir")
+            key=${key#droiddeck-esync-pack-}
+            rev=${id##*-r}
+            tag="$prefix$key-r$rev"
+            ref=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["source"]["ref"])' "$dir/$id.json")
+            bleeding=()
+            if [[ "$ref" == "$bleeding_prefix"* ]]; then
+              bleeding=(--bleeding)
+            fi
+            python3 droiddeck-esync/discover.py fork-notes --entry "$dir/$id.json" --archive "$dir/$id.tzst" --tag "$tag" \
+              --check "checks/$key.md" --run "$RUN" --branch "$BRANCH" "${bleeding[@]}" --out "notes/$key.md" --lines "notes/$key.lines"
+            if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release create "$tag" -R "$GITHUB_REPOSITORY" --prerelease --latest=false \
+                --title "droiddeck-esync semaphore pool pack ($flavor $ref, r$rev)" --notes-file "notes/$key.md" \
+                || gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null
+            fi
+            rm -f published.tzst
+            if gh release download "$tag" -R "$GITHUB_REPOSITORY" -p "$id.tzst" -O published.tzst >/dev/null 2>&1; then
+              if cmp -s published.tzst "$dir/$id.tzst"; then
+                echo "::notice::$id is already published in $tag"
+                continue
+              fi
+              echo "::warning::$id.tzst is already published in $tag with other bytes; it stays (raise fork.json rev to replace it)"
+              continue
+            fi
+            gh release upload "$tag" -R "$GITHUB_REPOSITORY" "$dir/$id.tzst" "$dir/$id.json"
+            published+=("$id")
+            cat "notes/$key.lines" >> extra-lines.txt
+            echo "Published \`$id\` to $tag" >> "$GITHUB_STEP_SUMMARY"
+          done 3< packs.tsv
+          echo "published=${published[*]}" >> "$GITHUB_OUTPUT"
+          if [ -s extra-lines.txt ]; then
+            {
+              echo
+              echo "### Lines for tools/droiddeck-esync/extra.list in Betaness/DroidDeck"
+              echo
+              echo '```'
+              cat extra-lines.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Record the builds that made no pack
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATRIX: ${{ needs.discover.outputs.matrix }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p packs failed
+          tag=$(python3 -c 'import json; print(json.load(open("droiddeck-esync/fork.json"))["state_release"])')
+          python3 droiddeck-esync/discover.py failures --matrix "$MATRIX" packs > failed.tsv
+          while IFS=$'\t' read -r -u 3 flavor marker; do
+            if ! gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release create "$tag" -R "$GITHUB_REPOSITORY" --prerelease --latest=false --title "$tag" \
+                --notes "State of the fork's semaphore-pool watch: a <build>-r<rev>-<series digest>.failed asset holds back that build for a day." \
+                || gh release view "$tag" -R "$GITHUB_REPOSITORY" >/dev/null
+            fi
+            echo "$RUN_URL" > "failed/$marker"
+            gh release upload "$tag" -R "$GITHUB_REPOSITORY" "failed/$marker" --clobber
+            echo "::warning::$marker: no pack was made; the watch skips this build for a day unless rev or the patch series changes"
+          done 3< failed.tsv
+
+      # GitHub mails the owner about failed scheduled runs; set the repository variable SEMPOOL_REMIND_FAIL=1
+      # to end a run that published packs as failed, as a reminder to ship them.
+      - name: Remind
+        if: steps.upload.outputs.published != ''
+        env:
+          PUBLISHED: ${{ steps.upload.outputs.published }}
+          REMIND_FAIL: ${{ vars.SEMPOOL_REMIND_FAIL }}
+        run: |
+          set -euo pipefail
+          echo "::warning::new fork packs: $PUBLISHED; add their lines (in the run summary) to tools/droiddeck-esync/extra.list and ship an APK"
+          if [ "$REMIND_FAIL" = 1 ]; then
+            exit 1
+          fi

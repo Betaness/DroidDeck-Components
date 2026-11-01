@@ -13,9 +13,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from make_index import check_entry
-from make_pack import FLAVORS, HERE, PATCHES, REVOKED, SERIES, PackError, patch_digest, read_revoked, sha256_file, slug
+from make_pack import (BINARIES, FLAVORS, HERE, NTDLL, PACK_ID, PATCHES, REVOKED, SERIES, WINESERVER, PackError, binary, patch_digest,
+                       read_revoked, sha256_file, slug)
 
 FLAVORS_FILE = HERE / "flavors.json"
+FORK_FILE = HERE / "fork.json"
+RELEASE_TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+BRANCH = re.compile(r"[A-Za-z0-9._-]*")
+SHA1 = re.compile(r"[0-9a-f]{40}")
 ARCHIVE = re.compile(r"\.tar\.(gz|xz)$")
 ASSIGNMENT = re.compile(r"(?:export\s+|override\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:\?|\+|!|:{1,3})?=\s*(.*)")
 REFERENCE = re.compile(r"\$[({]([A-Za-z_][A-Za-z0-9_]*)[)}]")
@@ -566,6 +571,364 @@ def sdk_image(text: str, variable: str = "STEAMRT_IMAGE", match: str = "arm64-ll
     raise problem or PackError(f"no {variable} assignment names an {match} image")
 
 
+# Fork mode: a fork of this repository builds its own packs (a higher rev, its own patch series) from a scheduled watch
+# and publishes each one to a prerelease of its own. It does not read or sign the upstream index; a build counts as
+# done when one of the fork's releases holds a pack entry for it at the flavor's rev or above.
+
+def load_fork(path: Path, flavors: dict) -> dict:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        raise PackError(f"cannot read {path}: {e}") from e
+
+    def fail(why: str):
+        raise PackError(f"{path}: {why}")
+
+    if not isinstance(data, dict) or data.get("format") != 1:
+        fail("is not a format 1 fork file")
+    if not isinstance(data.get("repo"), str) or not REPO.fullmatch(data["repo"]):
+        fail("repo must be owner/name")
+    if type(data.get("rev")) is not int or data["rev"] < 1:
+        fail("rev must be a positive number")
+    names = data.get("flavors")
+    if not isinstance(names, list) or not names or not all(isinstance(name, str) and name in flavors["flavors"] for name in names):
+        fail("flavors must list flavors of flavors.json")
+    for name in names:
+        if data["rev"] <= flavors["flavors"][name]["rev"]:
+            fail(f"rev must be above the {name} rev of flavors.json, so a fork pack never shares an id with an upstream one")
+    for key in ("release_prefix", "state_release"):
+        if not isinstance(data.get(key), str) or not RELEASE_TAG.fullmatch(data[key]):
+            fail(f"{key} must be a release tag")
+    bleeding = data.get("bleeding_edge")
+    if bleeding is not None:
+        if not isinstance(bleeding, dict) or bleeding.get("flavor") not in names or flavors["flavors"][bleeding["flavor"]]["list"] != "tags":
+            fail("bleeding_edge must name a tag-listed flavor of the fork")
+        if not isinstance(bleeding.get("prefix"), str) or not re.fullmatch(r"[A-Za-z0-9._-]+", bleeding["prefix"]):
+            fail("bleeding_edge needs a tag prefix")
+        if not isinstance(bleeding.get("tag"), str):
+            fail("bleeding_edge needs a tag pattern")
+        try:
+            re.compile(bleeding["tag"])
+        except re.error as e:
+            fail(f"bleeding_edge: {bleeding['tag']!r} is not a regular expression: {e}")
+        if type(bleeding.get("keep")) is not int or bleeding["keep"] < 1:
+            fail("bleeding_edge: keep must be a positive number")
+        if not isinstance(bleeding.get("depot_app", ""), str) or not re.fullmatch(r"[0-9]*", bleeding.get("depot_app", "")):
+            fail("bleeding_edge: depot_app must be a Steam app id")
+        if not isinstance(bleeding.get("depot_branch", ""), str) or not BRANCH.fullmatch(bleeding.get("depot_branch", "")):
+            fail("bleeding_edge: depot_branch must be a branch name")
+    upstream = data.get("upstream")
+    if upstream is not None:
+        if not isinstance(upstream, dict) or not isinstance(upstream.get("repo"), str) or not REPO.fullmatch(upstream["repo"]) \
+                or not isinstance(upstream.get("ref"), str) or not BRANCH.fullmatch(upstream["ref"]) or not upstream["ref"] \
+                or not isinstance(upstream.get("index_release"), str) or not RELEASE_TAG.fullmatch(upstream["index_release"]):
+            fail("upstream needs repo, ref and index_release")
+        revs = upstream.get("rev")
+        if not isinstance(revs, dict) or not all(name in flavors["flavors"] and type(rev) is int for name, rev in revs.items()):
+            fail("upstream.rev must give the upstream rev of flavors")
+    return data
+
+
+def fork_fetch(repo: str, fork: dict, out: Path, now: datetime) -> tuple[int, int]:
+    releases = gh_api(f"repos/{repo}/releases?per_page=100", paginate=True)
+    if not isinstance(releases, list):
+        raise PackError(f"{repo}: the release list is not a list")
+    out.mkdir(parents=True, exist_ok=True)
+    markers = set()
+    count = 0
+    for release in releases:
+        tag = release.get("tag_name") if isinstance(release, dict) else None
+        if not isinstance(tag, str) or release.get("draft") or not tag.startswith(fork["release_prefix"]) or not RELEASE_TAG.fullmatch(tag):
+            continue
+        for asset in release.get("assets") or []:
+            name = asset.get("name") if isinstance(asset, dict) else None
+            if not isinstance(name, str):
+                continue
+            if tag == fork["state_release"]:
+                moment = parse_time(asset.get("updated_at")) or parse_time(asset.get("created_at"))
+                if name.endswith(FAILED) and moment is not None and now - moment < RETRY_AFTER:
+                    markers.add(name)
+                continue
+            if not name.endswith(".json") or not PACK_ID.fullmatch(name[:-len(".json")]):
+                continue
+            try:
+                entry = json.loads(asset_text(repo, asset.get("id"), f"{tag} {name}"))
+            except ValueError:
+                entry = None
+            if not isinstance(entry, dict) or entry.get("id") != name[:-len(".json")]:
+                print(f"discover: {tag} {name} is not a pack entry", file=sys.stderr)
+                continue
+            folder = out / tag
+            folder.mkdir(exist_ok=True)
+            (folder / name).write_text(json.dumps(entry, indent=1, sort_keys=True) + "\n")
+            count += 1
+    (out / "failed.txt").write_text("".join(f"{name}\n" for name in sorted(markers)))
+    return count, len(markers)
+
+
+def fork_entries(directory: Path) -> tuple[list[dict], frozenset[str]]:
+    entries = []
+    for path in sorted(directory.glob("*/*.json")) if directory.is_dir() else []:
+        try:
+            entry = json.loads(path.read_text())
+        except ValueError as e:
+            raise PackError(f"{path}: {e}") from e
+        if isinstance(entry, dict) and isinstance(entry.get("source"), dict) and isinstance(entry.get("stock"), dict):
+            entries.append(entry)
+    failed = directory / "failed.txt"
+    markers = frozenset(line.strip() for line in failed.read_text().splitlines() if line.strip()) if failed.is_file() else frozenset()
+    return entries, markers
+
+
+def bleeding_candidates(flavor: str, cfg: dict, bleeding: dict, ref: str) -> list[dict]:
+    if ref and not ref.startswith(bleeding["prefix"]):
+        return []
+    refs = gh_api(f"repos/{cfg['repo']}/git/matching-refs/tags/{quote(bleeding['prefix'])}", paginate=True)
+    if not isinstance(refs, list):
+        raise PackError(f"{cfg['repo']}: the tag list is not a list")
+    pattern = re.compile(bleeding["tag"])
+    names = set()
+    for item in refs:
+        name = item.get("ref", "") if isinstance(item, dict) else ""
+        if isinstance(name, str) and name.startswith("refs/tags/") and pattern.search(name[len("refs/tags/"):]):
+            names.add(name[len("refs/tags/"):])
+    ordered = sorted(names, key=natural_key, reverse=True)
+    chosen = [name for name in ordered if name == ref] if ref else ordered[:bleeding["keep"]]
+    found = []
+    for name in chosen:
+        row = candidate(flavor, cfg, name, token=cfg["version_token"].format(tag=name), depot_app=bleeding.get("depot_app", ""))
+        row["depot_branch"] = bleeding.get("depot_branch", "")
+        found.append(row)
+    return found
+
+
+def tag_source(repo: str, tag: str, sdk: dict) -> tuple[str, str]:
+    wine = gh_api(f"repos/{repo}/contents/wine?ref={quote(tag)}")
+    commit = wine.get("sha") if isinstance(wine, dict) else None
+    if not isinstance(commit, str) or not SHA1.fullmatch(commit):
+        raise PackError(f"{repo} {tag}: no wine submodule commit")
+    result = gh("api", "-H", "Accept: application/vnd.github.raw", f"repos/{repo}/contents/{sdk['file']}?ref={quote(tag)}")
+    if result.returncode != 0:
+        raise PackError(f"{repo} {tag}: cannot read {sdk['file']}: {result.stderr.strip()}")
+    return commit, sdk_image(result.stdout, sdk["variable"], sdk["match"])
+
+
+def same_source(flavor: str, wine: str, image: str, entries: list[dict], rev: int) -> str:
+    for entry in entries:
+        source = entry["source"]
+        if entry.get("flavor") == flavor and source.get("wine_commit") == wine and source.get("sdk_image") == image \
+                and type(entry.get("rev")) is int and entry["rev"] >= rev and not entry.get("revoked"):
+            return str(entry.get("id"))
+    return ""
+
+
+def fork_discover(flavors: dict, fork: dict, selected: str, ref: str, entries: list[dict], revoked: set[str],
+                  failed: frozenset[str] = frozenset()) -> list[dict]:
+    if selected != "all" and selected not in fork["flavors"]:
+        raise PackError(f"the fork does not build {selected} packs")
+    names = [name for name in chosen_flavors(flavors, selected) if name in fork["flavors"]]
+    done = built({"packs": entries})
+    bleeding = fork.get("bleeding_edge")
+    digests = {}
+    rows = []
+    seen = set()
+    matched = False
+    for flavor in names:
+        cfg = flavors["flavors"][flavor]
+        if cfg["list"] == "tags":
+            found = tag_candidates(flavor, cfg, ref)
+            for row in found:
+                row["depot_branch"] = ""
+            early = {row["key"] for row in found}
+            if bleeding and bleeding["flavor"] == flavor:
+                found += bleeding_candidates(flavor, cfg, bleeding, ref)
+        else:
+            found = release_candidates(flavor, cfg, ref)
+            for row in found:
+                row["depot_branch"] = ""
+            early = {row["key"] for row in found}
+        matched = matched or bool(found)
+        for row in found:
+            if row["key"] in seen:
+                continue
+            seen.add(row["key"])
+            row["rev"] = fork["rev"]
+            label = f"{flavor} {row['tag']}{' ' + row['asset'] if row['asset'] else ''}"
+            have = done.get((flavor, row["tag"], row["asset"]), 0)
+            if revoked_build(row, revoked):
+                print(f"discover: {label}: revoked at rev {row['rev']}", file=sys.stderr)
+                continue
+            if have >= cfg["rev"]:
+                print(f"discover: {label}: the fork has a pack at rev {have}", file=sys.stderr)
+                continue
+            if not ref and failure_marker(row, digests) in failed:
+                print(f"discover: {label}: failed at rev {row['rev']} with this patch series in the last "
+                      f"{RETRY_AFTER.days} days; skipped (bump rev, change the series or build the tag by name)", file=sys.stderr)
+                continue
+            if row["key"] not in early:
+                wine, image = tag_source(cfg["repo"], row["tag"], flavors["sdk_image"])
+                twin = same_source(flavor, wine, image, entries, cfg["rev"])
+                if twin:
+                    print(f"discover: {label}: wine {wine[:12]} with {image} already has {twin}", file=sys.stderr)
+                    continue
+            print(f"discover: {label}: to build", file=sys.stderr)
+            rows.append(row)
+    if ref and not matched:
+        raise PackError(f"no {'' if selected == 'all' else selected + ' '}build is tagged {ref}")
+    return rows
+
+
+def tree_hashes(directory: Path) -> dict:
+    version = directory / "version"
+    text = version.read_text(errors="replace") if version.is_file() else ""
+    return {"line": text.splitlines()[0].strip() if text.strip() else "",
+            "stock": {rel: sha256_file(binary(directory, rel)) for rel in BINARIES}}
+
+
+def fork_check(entry: dict, upstream: dict, entries: list[dict], depot: dict | None = None,
+               depot_label: str = "") -> tuple[list[str], bool]:
+    stock = {rel: entry["stock"][rel] for rel in BINARIES}
+    source = entry["source"]
+    lines = []
+    checked = []
+    ok = True
+    if not entry.get("source_match") and source.get("asset"):
+        checked.append(f"the stock files of the release asset `{source['asset']}`")
+    packs = upstream.get("packs") if isinstance(upstream, dict) else None
+    for other in packs if isinstance(packs, list) else []:
+        theirs = other.get("source") if isinstance(other, dict) else None
+        if not isinstance(theirs, dict) or other.get("flavor") != entry["flavor"] or theirs.get("ref") != source.get("ref") \
+                or theirs.get("asset", "") != source.get("asset", ""):
+            continue
+        other_stock = other.get("stock") if isinstance(other.get("stock"), dict) else {}
+        if all(other_stock.get(rel) == stock[rel] for rel in BINARIES) and other.get("exports") == entry["exports"]:
+            lines.append(f"- upstream's `{other.get('id')}` (rev {other.get('rev')}) has the same stock ntdll.so, wineserver and exports")
+            if "upstream's pack of the same build" not in checked:
+                checked.append("upstream's pack of the same build")
+        else:
+            lines.append(f"- **upstream's `{other.get('id')}` has other stock files** (ntdll.so `{str(other_stock.get(NTDLL))[:12]}`, "
+                         f"wineserver `{str(other_stock.get(WINESERVER))[:12]}`): this build does not reproduce them")
+            ok = False
+    if depot is not None:
+        line = depot.get("line", "")
+        if all(depot["stock"].get(rel) == stock[rel] for rel in BINARIES):
+            lines.append(f"- the Steam depot ({depot_label}, version line `{line}`) has the same ntdll.so and wineserver")
+            checked.append(f"the Steam depot ({depot_label})")
+        elif line.split()[1:2] == [entry["version"]]:
+            lines.append(f"- **the Steam depot ({depot_label}) is this build (`{line}`) but has other files**: this build does not reproduce them")
+            ok = False
+        else:
+            lines.append(f"- the Steam depot ({depot_label}) is at `{line or 'no version line'}`, another build: not compared")
+    for other in entries:
+        theirs = other.get("source") if isinstance(other.get("source"), dict) else {}
+        if other.get("id") == entry["id"] or other.get("flavor") != entry["flavor"] \
+                or theirs.get("wine_commit") != source.get("wine_commit") or theirs.get("sdk_image") != source.get("sdk_image"):
+            continue
+        same = all(other["stock"].get(rel) == stock[rel] for rel in BINARIES)
+        lines.append(f"- `{other.get('id')}` (same wine commit and SDK image) {'has the same' if same else 'has other'} stock files")
+    head = ("checked against " + " and ".join(checked)) if checked else \
+        "not checked against stock files (no upstream pack, Steam depot or release asset for this build yet)"
+    return [f"Stock check: {head}" + ("" if ok else "; **FAILED**"), *lines], ok
+
+
+FLAVOR_NAMES = {"valve": "Valve Proton", "ge": "GE-Proton", "cachyos": "Proton-CachyOS"}
+
+
+def fork_notes(entry_path: Path, archive: Path, repo: str, tag: str, check: list[str], run: str, branch: str, bleeding: bool) -> tuple[str, list[str]]:
+    entry = json.loads(entry_path.read_text())
+    source = entry["source"]
+    patches = ", ".join(f"`{path.name}`" for path in sorted((PATCHES / entry["patch"]["series"]).glob("*.patch")))
+    lines = [f"{repo}\t{tag}\t{archive.name}\t{sha256_file(archive)}", f"{repo}\t{tag}\t{entry_path.name}\t{sha256_file(entry_path)}"]
+    asset = f" `{source['asset']}`" if source.get("asset") else ""
+    text = [
+        "Extra droiddeck-esync pack made by this fork's scheduled watch, not part of the signed upstream index.",
+        "",
+        f"- `{entry['id']}`: {FLAVOR_NAMES.get(entry['flavor'], entry['flavor'])} `{source['ref']}`{asset} ({source['repo']} "
+        f"{str(source.get('commit'))[:8]}, wine {str(source.get('wine_commit'))[:8]}, SDK image `{source.get('sdk_image')}`), "
+        f"stock ntdll.so `{entry['stock'][NTDLL][:12]}...`, stock wineserver `{entry['stock'][WINESERVER][:12]}...`, "
+        f"version line `{entry['version_line']}`; `<id>.tzst` sha256 `{entry['asset']['sha256']}`, {entry['asset']['size']} bytes",
+        f"- rev {entry['rev']}: patched ntdll.so with a pool for anonymous semaphores, plus the matching wineserver "
+        f"(patch series `{entry['patch']['series']}`: {patches})",
+        f"- built by CI on this fork, branch `{branch}` ({run})",
+        f"- {check[0]}" if check else "- Stock check: none",
+        *(f"  {line}" for line in check[1:]),
+        "- `<id>.json` is the index entry the build produced for `<id>.tzst`",
+    ]
+    if bleeding:
+        text += ["", "Built from a bleeding-edge tag before Steam ships it. The guest picks it only by an exact match: when the Proton "
+                 "Experimental build Steam ships has the same ntdll.so and wineserver (same wine commit and SDK image). "
+                 "The pack of the shipped tag replaces it."]
+    text += ["", "The DroidDeck app (Betaness/DroidDeck) ships it once these lines are in `tools/droiddeck-esync/extra.list`:", "",
+             "```", *lines, "```", ""]
+    return "\n".join(text), lines
+
+
+def raw_file(repo: str, path: str, ref: str) -> str | None:
+    result = gh("api", "-H", "Accept: application/vnd.github.raw", f"repos/{repo}/contents/{path}?ref={quote(ref)}")
+    if result.returncode != 0:
+        if "HTTP 404" in result.stderr:
+            return None
+        raise PackError(f"cannot read {repo} {path}: {result.stderr.strip()}")
+    return result.stdout
+
+
+def fork_upstream(flavors: dict, fork: dict) -> list[str]:
+    upstream = fork.get("upstream")
+    if not upstream:
+        return []
+    notes = []
+    text = raw_file(upstream["repo"], "droiddeck-esync/flavors.json", upstream["ref"])
+    try:
+        theirs = json.loads(text or "")["flavors"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise PackError(f"{upstream['repo']}: flavors.json is unreadable") from e
+    for name, rev in sorted(upstream["rev"].items()):
+        now = theirs.get(name, {}).get("rev") if isinstance(theirs.get(name), dict) else None
+        if now != rev:
+            notes.append(f"upstream {name} packs are at rev {now}, not {rev}: see what changed, carry it into the fork's patch series "
+                         f"and raise fork.json rev to rebuild (then set upstream.rev.{name} to {now})")
+    for series in sorted({flavors["flavors"][name]["series"] for name in fork["flavors"]}):
+        for path in sorted((PATCHES / series).glob("*.patch")):
+            text = raw_file(upstream["repo"], f"droiddeck-esync/patches/{series}/{path.name}", upstream["ref"])
+            if text is not None and text.encode() != path.read_bytes():
+                notes.append(f"upstream changed patches/{series}/{path.name}: carry the change into the fork's series and raise fork.json rev")
+    return notes
+
+
+def fork_main(args: argparse.Namespace, flavors: dict, fork: dict) -> int:
+    if args.command == "fork-fetch":
+        repo = args.repo or fork["repo"]
+        if not REPO.fullmatch(repo):
+            raise PackError(f"{repo!r} is not owner/name")
+        count, markers = fork_fetch(repo, fork, Path(args.out), datetime.now(timezone.utc))
+        print(f"discover: {count} pack entries and {markers} recent failure markers in the {repo} releases", file=sys.stderr)
+        return 0
+    if args.command == "fork-matrix":
+        entries, failed = fork_entries(Path(args.entries))
+        revoked = read_revoked(Path(args.revoked)) if args.revoked else set()
+        emit(fork_discover(flavors, fork, args.flavor, args.ref.strip(), entries, revoked, failed))
+        return 0
+    if args.command == "fork-check":
+        entry = json.loads(Path(args.entry).read_text())
+        entries, _ = fork_entries(Path(args.entries))
+        upstream = json.loads(Path(args.upstream_index).read_text()) if args.upstream_index and Path(args.upstream_index).is_file() else {}
+        depot = tree_hashes(Path(args.depot_dir)) if args.depot_dir else None
+        lines, ok = fork_check(entry, upstream, entries, depot, args.depot_label or "Steam")
+        print("\n".join(lines))
+        return 0 if ok else 2
+    if args.command == "fork-notes":
+        check = Path(args.check).read_text().splitlines() if args.check and Path(args.check).is_file() else []
+        text, lines = fork_notes(Path(args.entry), Path(args.archive), fork["repo"], args.tag, check, args.run, args.branch, args.bleeding)
+        Path(args.out).write_text(text)
+        Path(args.lines).write_text("".join(f"{line}\n" for line in lines))
+        return 0
+    if args.command == "fork-upstream":
+        for note in fork_upstream(flavors, fork):
+            print(note)
+        return 0
+    raise PackError(f"unknown command {args.command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Find the Proton builds that have no droiddeck-esync pack yet, as a GitHub Actions matrix.")
     parser.add_argument("--flavors", default=str(FLAVORS_FILE))
@@ -590,9 +953,37 @@ def main(argv: list[str] | None = None) -> int:
     watching.add_argument("--state", default="")
     watching.add_argument("--steam-info", default="")
     watching.add_argument("--out", required=True)
+    parser.add_argument("--fork", default=str(FORK_FILE))
+    fetching = commands.add_parser("fork-fetch")
+    fetching.add_argument("--repo", default="")
+    fetching.add_argument("--out", required=True)
+    forked = commands.add_parser("fork-matrix")
+    forked.add_argument("--flavor", default="all", choices=("all", *FLAVORS))
+    forked.add_argument("--ref", default="")
+    forked.add_argument("--entries", required=True)
+    forked.add_argument("--revoked", default=str(REVOKED))
+    checking = commands.add_parser("fork-check")
+    checking.add_argument("--entry", required=True)
+    checking.add_argument("--entries", required=True)
+    checking.add_argument("--upstream-index", default="")
+    checking.add_argument("--depot-dir", default="")
+    checking.add_argument("--depot-label", default="")
+    noting = commands.add_parser("fork-notes")
+    noting.add_argument("--entry", required=True)
+    noting.add_argument("--archive", required=True)
+    noting.add_argument("--tag", required=True)
+    noting.add_argument("--check", default="")
+    noting.add_argument("--run", default="")
+    noting.add_argument("--branch", default="semaphore-pool-flavors")
+    noting.add_argument("--bleeding", action="store_true")
+    noting.add_argument("--out", required=True)
+    noting.add_argument("--lines", required=True)
+    commands.add_parser("fork-upstream")
     args = parser.parse_args(argv)
     try:
         flavors = load_flavors(Path(args.flavors))
+        if args.command.startswith("fork-"):
+            return fork_main(args, flavors, load_fork(Path(args.fork), flavors))
         if args.command == "sdk-image":
             settings = flavors["sdk_image"]
             print(sdk_image(Path(args.makefile).read_text(), settings["variable"], settings["match"]))
