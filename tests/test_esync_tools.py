@@ -1234,7 +1234,7 @@ class PublishStepTest(unittest.TestCase):
 class ShippedFilesTest(unittest.TestCase):
     def test_shipped_flavors(self):
         flavors = discover.load_flavors(ESYNC / "flavors.json")
-        self.assertEqual(sorted(flavors["flavors"]), ["cachyos", "droiddeck", "ge", "valve"])
+        self.assertEqual(sorted(flavors["flavors"]), ["cachyos", "ge", "valve"])
         valve = flavors["flavors"]["valve"]
         experimental = valve["families"]["experimental"]["tag"]
         proton = valve["families"]["proton"]["tag"]
@@ -1245,21 +1245,12 @@ class ShippedFilesTest(unittest.TestCase):
         ):
             self.assertEqual(bool(re.search(pattern, tag)), wanted, tag)
         self.assertEqual({name: cfg["series"] for name, cfg in flavors["flavors"].items()},
-                         {"valve": "valve-11", "ge": "valve-11", "cachyos": "cachyos-11", "droiddeck": "droiddeck-11"})
+                         {"valve": "valve-11", "ge": "valve-11", "cachyos": "cachyos-11"})
         self.assertEqual({name: cfg["source_match"] for name, cfg in flavors["flavors"].items()},
-                         {"valve": True, "ge": False, "cachyos": False, "droiddeck": False})
+                         {"valve": True, "ge": False, "cachyos": False})
         self.assertEqual({name: cfg["build_dir"] for name, cfg in flavors["flavors"].items()},
                          {"valve": "/builds/proton/proton/build-dir", "ge": "/home/tcrider/build",
-                          "cachyos": "/home/runner/work/proton-cachyos/proton-cachyos/build",
-                          "droiddeck": "/home/runner/work/DroidDeck-Proton/DroidDeck-Proton/build"})
-        # DroidDeck-Proton carries 0001 (esync) already: its series is the semaphore pool alone, the same patch as valve-11's.
-        droiddeck = flavors["flavors"]["droiddeck"]
-        self.assertEqual(sorted(p.name for p in (ESYNC / "patches/droiddeck-11").glob("*.patch")), ["0002-droiddeck-semaphore-pool.patch"])
-        self.assertEqual((ESYNC / "patches/droiddeck-11/0002-droiddeck-semaphore-pool.patch").read_bytes(),
-                         (ESYNC / "patches/valve-11/0002-droiddeck-semaphore-pool.patch").read_bytes())
-        self.assertEqual(droiddeck["wine"]["prep"], "banner-proton/apply-deferred-game-patches.sh")
-        for tag, wanted in (("DroidDeck-Proton-11-11.11", True), ("DroidDeck-Proton-11-9.10", True), ("DroidDeck-Proton-11-11.11-rc1", False)):
-            self.assertEqual(bool(re.search(droiddeck["tag"], tag)), wanted, tag)
+                          "cachyos": "/home/runner/work/proton-cachyos/proton-cachyos/build"})
         self.assertEqual({name: family["depot_app"] for name, family in valve["families"].items()},
                          {"experimental": "4427310", "proton": "4628740"})
 

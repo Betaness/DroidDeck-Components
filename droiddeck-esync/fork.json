@@ -4,7 +4,6 @@
  "rev": 100,
  "flavors": [
   "cachyos",
-  "droiddeck",
   "ge",
   "valve"
  ],

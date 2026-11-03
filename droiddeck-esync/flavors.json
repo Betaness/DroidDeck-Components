@@ -79,27 +79,6 @@
     "clone": "shallow",
     "prep": ""
    }
-  },
-  "droiddeck": {
-   "repo": "Droid-Deck/DroidDeck-Proton",
-   "list": "releases",
-   "tag": "^DroidDeck-Proton-11-\\d+\\.\\d+$",
-   "assets": [
-    "aarch64\\.tar\\.(gz|xz)$"
-   ],
-   "keep": 2,
-   "rev": 1,
-   "series": "droiddeck-11",
-   "profile": "valve",
-   "source_match": false,
-   "build_dir": "/home/runner/work/DroidDeck-Proton/DroidDeck-Proton/build",
-   "wine": {
-    "submodules": [
-     "wine"
-    ],
-    "clone": "treeless",
-    "prep": "banner-proton/apply-deferred-game-patches.sh"
-   }
   }
  }
 }
