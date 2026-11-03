@@ -203,6 +203,14 @@ reads `fork.json`:
    this fork shares with upstream changed: carry the change into the fork's series and raise
    `fork.json` `rev`.
 
+The fork also builds DroidDeck-Proton (flavor `droiddeck`, the `aarch64` asset of the newest two
+`DroidDeck-Proton-11-*` releases of Droid-Deck/DroidDeck-Proton). Its wine carries `0001` already,
+so its series `droiddeck-11` is `0002` alone (byte for byte valve-11's); `prep` runs the release's
+own `banner-proton/apply-deferred-game-patches.sh`, as its build does before compiling wine, and
+the control build must reproduce the release's ntdll.so and wineserver (its build directory is
+`build_dir`). Its esync has no built-in marker, so the guest picks such a pack by the exact stock
+match like any other.
+
 A pack built from a bleeding-edge tag exists before Steam ships the next Proton Experimental;
 the guest picks it only by an exact match, that is when the shipped build has the same ntdll.so
 and wineserver. Manual runs: Actions -> Fork semaphore-pool watch (on `main`) -> one tag.

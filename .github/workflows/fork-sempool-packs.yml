@@ -36,7 +36,7 @@ on:
       flavor:
         description: 'Proton flavor to look at'
         type: choice
-        options: [ all, valve, ge, cachyos ]
+        options: [ all, valve, ge, cachyos, droiddeck ]
         default: all
       ref:
         description: 'One tag to build (e.g. experimental-11.0-20261101); empty = the newest builds without a fork pack'
