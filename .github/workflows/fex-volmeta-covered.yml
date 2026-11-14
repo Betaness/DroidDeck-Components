@@ -1,0 +1,205 @@
+name: FEX DLLs with VolatileMetadataCovered (test build)
+
+# Builds libarm64ecfex.dll and libwow64fex.dll from the exact FEX commit Proton Experimental (ARM64)
+# 11.0-20261112 ships (FEX-2611-45-gab135df, Proton's FEX submodule), plus one patch, fetched at a pinned
+# commit and checked by sha256: patches/fex/0002-volatile-metadata-covered-blocks-without-tso.patch of
+# zolotvok/blobferry 4cbdba7a (MIT, its header says what it changes). It adds the FEX option VolatileMetadataCovered
+# (FEX_VOLATILEMETADATACOVERED=1, off by default): code inside a volatile-metadata valid range with no listed
+# access is compiled without TSO.
+#
+# CMake arguments and compiler flags follow Proton's Makefile.in (FEX_COMMON_CMAKE_ARGS, the arm64 CFLAGS) with
+# the official llvm-mingw release that carries the same LLVM as Proton's toolchain (22.1.8). The DLLs are
+# stripped like Proton's (objcopy --strip-debug); the unstripped ones are kept in a separate artifact.
+# The version string is FEX-2611-45-gab135df-vmc so the build can be told apart from Proton's; the hash is
+# Proton's (ab135df). Nothing is published: the result is the workflow artifact.
+#
+# Runs on pushes to this branch only.
+
+on:
+  push:
+    branches: [ fex-volmeta-covered ]
+    paths:
+      - '.github/workflows/fex-volmeta-covered.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fex-volmeta-covered
+  cancel-in-progress: true
+
+env:
+  FEX_COMMIT: ab135df091d005cc98dfddc56c3dc9c9e4bd501d
+  FEX_HASH: ab135df
+  FEX_VERSION: FEX-2611-45-gab135df-vmc
+  PATCH_URL: https://raw.githubusercontent.com/zolotvok/blobferry/4cbdba7adf99fb12843ca205b583cb98faaf4798/patches/fex/0002-volatile-metadata-covered-blocks-without-tso.patch
+  PATCH_SHA256: a27393a964e4cc5d4dc92c39ce3dd48811f974a69aaa62a5b605b87ce4d882b0
+  LLVM_MINGW: llvm-mingw-20260616-ucrt-ubuntu-22.04-x86_64
+  LLVM_MINGW_URL: https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/llvm-mingw-20260616-ucrt-ubuntu-22.04-x86_64.tar.xz
+  LLVM_MINGW_SHA256: 534b92e067b22a6b4441f48ae9240a3341b17825d04d577eab0cf85c44b4deda
+
+jobs:
+  build:
+    name: ${{ matrix.dll }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - triple: arm64ec-w64-mingw32
+            dll: libarm64ecfex.dll
+            machine: IMAGE_FILE_MACHINE_ARM64EC
+            exports: >-
+              BTCpu64FlushInstructionCache BTCpu64IsProcessorFeaturePresent BTCpu64NotifyMemoryDirty
+              BTCpu64NotifyReadFile BeginSimulation DispatchJump ExitToX64 FlushInstructionCacheHeavy
+              NotifyMapViewOfSection NotifyMemoryAlloc NotifyMemoryFree NotifyMemoryProtect NotifyUnmapViewOfSection
+              ProcessInit ProcessTerm ResetToConsistentState RetToEntryThunk ThreadInit ThreadTerm
+              UpdateProcessorInformation
+          - triple: aarch64-w64-mingw32
+            dll: libwow64fex.dll
+            machine: IMAGE_FILE_MACHINE_ARM64
+            exports: >-
+              BTCpuFlushInstructionCache2 BTCpuFlushInstructionCacheHeavy BTCpuGetBopCode BTCpuGetContext
+              BTCpuIsProcessorFeaturePresent BTCpuNotifyMapViewOfSection BTCpuNotifyMemoryAlloc BTCpuNotifyMemoryDirty
+              BTCpuNotifyMemoryFree BTCpuNotifyMemoryProtect BTCpuNotifyProcessExecuteFlagsChange BTCpuNotifyReadFile
+              BTCpuNotifyUnmapViewOfSection BTCpuProcessInit BTCpuProcessTerm BTCpuResetToConsistentState
+              BTCpuSetContext BTCpuSimulate BTCpuSuspendLocalThread BTCpuThreadInit BTCpuThreadTerm
+              BTCpuUpdateProcessorInformation __wine_get_unix_opcode
+    steps:
+      - name: Install build tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends cmake ninja-build python3 git xz-utils file
+
+      - name: llvm-mingw
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/llvm-mingw.tar.xz" "$LLVM_MINGW_URL"
+          echo "$LLVM_MINGW_SHA256  $RUNNER_TEMP/llvm-mingw.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/llvm-mingw"
+          tar -C "$RUNNER_TEMP/llvm-mingw" --strip-components=1 -xJf "$RUNNER_TEMP/llvm-mingw.tar.xz"
+          echo "$RUNNER_TEMP/llvm-mingw/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/llvm-mingw/bin/clang" --version | head -1
+
+      - name: FEX source at the exact commit
+        run: |
+          set -euo pipefail
+          git init -q fex
+          cd fex
+          git remote add origin https://github.com/FEX-Emu/FEX.git
+          git fetch -q --depth=1 origin "$FEX_COMMIT"
+          git -c advice.detachedHead=false checkout -q FETCH_HEAD
+          [ "$(git rev-parse HEAD)" = "$FEX_COMMIT" ] || { echo "::error::checked out $(git rev-parse HEAD)"; exit 1; }
+          # Everything the Windows build can use; the test binaries, Catch2 and Tracy are left out.
+          for p in External/fmt External/xxhash External/range-v3 External/rpmalloc External/unordered_dense \
+                   External/jemalloc_glibc External/vixl External/zydis External/drm-headers External/Vulkan-Headers \
+                   Source/Common/cpp-optparse; do
+            git submodule update --init --recursive --depth 1 -- "$p" || git submodule update --init --recursive -- "$p"
+          done
+          git submodule status
+
+      - name: Apply the patch
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/volmeta.patch" "$PATCH_URL"
+          echo "$PATCH_SHA256  $RUNNER_TEMP/volmeta.patch" | sha256sum -c -
+          cd fex
+          git apply --check -v "$RUNNER_TEMP/volmeta.patch"
+          git apply "$RUNNER_TEMP/volmeta.patch"
+          git diff --stat
+          git diff > "$RUNNER_TEMP/applied.diff"
+
+      - name: Configure and build (Proton's arguments)
+        run: |
+          set -euo pipefail
+          cd fex
+          flags="-march=armv8.2-a -mtune=cortex-x3 -O2 -fwrapv -fno-strict-aliasing -ggdb -ffunction-sections -fdata-sections -fno-omit-frame-pointer -ffile-prefix-map=$PWD=."
+          export CFLAGS="$flags" CPPFLAGS="$flags" CXXFLAGS="-std=c++17 $flags"
+          cmake -S . -B build -G Ninja -Wno-dev \
+            -DCMAKE_INSTALL_PREFIX="$PWD/install" \
+            -DCMAKE_INSTALL_LIBDIR=lib/wine/aarch64-windows \
+            -DCMAKE_SYSTEM_NAME=Windows \
+            -DENABLE_FEXCORE_PROFILER=True -DENABLE_LTO=False \
+            -DBUILD_TESTING=False -DTUNE_CPU=none -DRANGES_NATIVE=OFF \
+            -DBUILD_STEAM_SUPPORT=True \
+            -DOVERRIDE_VERSION="$FEX_VERSION" \
+            -DOVERRIDE_HASH="$FEX_HASH" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=Data/CMake/toolchain_mingw.cmake \
+            -DMINGW_TRIPLE=${{ matrix.triple }}
+          ninja -C build -j"$(nproc)"
+          ninja -C build install
+
+      - name: Strip and check
+        env:
+          DLL: ${{ matrix.dll }}
+          MACHINE: ${{ matrix.machine }}
+          EXPORTS: ${{ matrix.exports }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/stripped out/unstripped
+          src=$(find fex/install -type f -name "$DLL" | head -n1)
+          [ -n "$src" ] || { echo "::error::no $DLL installed"; find fex/install -type f; exit 1; }
+          cp "$src" "out/unstripped/$DLL"
+          llvm-objcopy --strip-debug "$src" "out/stripped/$DLL"
+          f="out/stripped/$DLL"
+          file "$f"
+          llvm-readobj --file-headers "$f" | grep -q "Machine: $MACHINE " || { echo "::error::$DLL is not $MACHINE"; llvm-readobj --file-headers "$f"; exit 1; }
+          if [ "$DLL" = libarm64ecfex.dll ]; then
+            llvm-readobj --coff-load-config "$f" | grep -q CHPEMetadata || { echo "::error::no CHPE metadata"; exit 1; }
+          fi
+          got=$(llvm-readobj --coff-exports "$f" | sed -n 's/^ *Name: //p' | sort | tr '\n' ' ')
+          want=$(printf '%s\n' $EXPORTS | sort | tr '\n' ' ')
+          [ "$got" = "$want" ] || { echo "::error::exports differ"; echo "got:  $got"; echo "want: $want"; exit 1; }
+          grep -aq 'VolatileMetadataCovered' "$f" || { echo "::error::no VolatileMetadataCovered option in $DLL"; exit 1; }
+          grep -aq "$FEX_VERSION" "$f" || { echo "::error::no version string $FEX_VERSION"; exit 1; }
+          grep -aq 'Wine builtin DLL' "$f" || { echo "::error::$DLL is not marked as a Wine builtin"; exit 1; }
+          size=$(stat -c %s "$f")
+          [ "$size" -gt 3000000 ] && [ "$size" -lt 12000000 ] || { echo "::error::size $size out of range"; exit 1; }
+          llvm-readobj --coff-imports "$f" | sed -n 's/^ *Name: //p' | grep -i '\.dll$' | sort -u
+          ls -l out/stripped out/unstripped
+          cp "$RUNNER_TEMP/applied.diff" "out/applied-${DLL%.dll}.diff"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.dll }}
+          path: out/
+          if-no-files-found: error
+
+  combine:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+      - name: One artifact with sums and build info
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p fex-volmeta-covered/unstripped
+          cp parts/*/stripped/*.dll fex-volmeta-covered/
+          cp parts/*/unstripped/*.dll fex-volmeta-covered/unstripped/
+          cmp parts/libarm64ecfex.dll/applied-libarm64ecfex.diff parts/libwow64fex.dll/applied-libwow64fex.diff
+          cp parts/libarm64ecfex.dll/applied-libarm64ecfex.diff fex-volmeta-covered/applied.diff
+          cd fex-volmeta-covered
+          sha256sum *.dll unstripped/*.dll applied.diff > SHA256SUMS
+          {
+            echo "fex_commit=$FEX_COMMIT"
+            echo "fex_version_string=$FEX_VERSION"
+            echo "fex_hash_override=$FEX_HASH"
+            echo "patch=$PATCH_URL"
+            echo "patch_sha256=$PATCH_SHA256"
+            echo "toolchain=$LLVM_MINGW (sha256 $LLVM_MINGW_SHA256)"
+            echo "workflow_commit=$GITHUB_SHA"
+            echo "run=$RUN_URL"
+          } > BUILDINFO
+          cat BUILDINFO SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fex-volmeta-covered
+          path: fex-volmeta-covered/
+          if-no-files-found: error
