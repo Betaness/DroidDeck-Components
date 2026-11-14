@@ -155,7 +155,12 @@ of 2026-11-14, proton-11.0-2c and 2e; GE-Proton11-12 after `protonprep-valve-sta
 cachyos-11.0-20261005, 20261014 and 20261015-slr). `ge-11` does not apply to GE-Proton11-10 and
 GE-Proton11-11 (wine c53678ab; on GE-Proton11-11 4 hunks of `0001` in `dlls/ntdll/unix/sync.c`, 2
 in `server/inproc_sync.c` and 1 in `server/object.h` fail), so rev 102 makes no packs for them;
-their fork packs stay at rev 2 (`valve-11` without `0002-directory-users-ace.patch`).
+their fork packs stay at rev 2 (`valve-11` without `0002-directory-users-ace.patch`). Seven builds
+have adopted rev 2 fork packs with the same ids as upstream's rev 2 packs (see Fork packs): Valve
+experimental-11.0-20261014 and 20261027b, proton-11.0-2c and 2e, and the three CachyOS builds above.
+Rev 102 rebuilds all but the two experimental ones, which are older than the newest `keep`
+experimental tags; `valve-11` applies to the wine source of both with `--fuzz=0`, and they get rev
+102 packs only from a manual run that names the tag.
 
 ## Building and publishing
 
@@ -230,12 +235,14 @@ A fork that carries its own patch series (here `0002-droiddeck-semaphore-pool.pa
    pack at `fork.json` `rev` or above. While `rev` is `adopt.fork_rev`, the fork packs made before
    the watch (`adopt.rev` 2 with their series' digest in `adopt.patch_sha256`) count too; other
    older packs under the same release prefix, like the r3 winex11 cache experiment, do not.
-   Raising `rev` therefore rebuilds every build. A bleeding-edge tag is also dropped when a
+   Raising `rev` therefore rebuilds every build `fork-matrix` lists; an older build keeps its fork pack
+   at the old `rev` until a manual run names its tag. A bleeding-edge tag is also dropped when a
    counted fork pack exists for the same wine commit and SDK image. Every new pack gets
    `fork.json` `rev` (102; 100 and 101 before), above any upstream rev, so a fork pack never shares
    an id with an upstream one and wins over upstream's pack of the same build in the guest. The packs
    adopted at rev 2 have the same ids as upstream's rev 2 packs of the same builds (other contents);
-   the app installs whichever of the two it gets first.
+   the app installs whichever of the two it gets first, and a fork pack of the same build at a higher
+   `rev` wins over both.
 2. The build job is the one above (the shared steps must stay identical; the tests check it), plus
    an anonymous Steam depot fetch (the bleeding-edge tag reads the `bleeding-edge` branch) and a
    stock check after `make_pack.py`: upstream's pack of the same build, which devices have matched
@@ -253,8 +260,11 @@ A fork that carries its own patch series (here `0002-droiddeck-semaphore-pool.pa
    two), and the depot log is not uploaded, since it names the account. With the repository variable `SEMPOOL_REMIND_FAIL=1`
    a run that published packs ends as failed, so GitHub mails the owner.
 4. `discover.py fork-upstream` warns when upstream's `rev` of a flavor or one of the patches
-   this fork shares with upstream changed: carry the change into the fork's series and raise
-   `fork.json` `rev`.
+   this fork shares with upstream changed, when upstream's `flavors.json` gives a flavor of the fork
+   another series, or when upstream's copy of a series has a patch the fork's lacks (neither needs an
+   upstream `rev` change; `cf6e67c` moved `ge` to `ge-11` at rev 1): carry the change into the fork's
+   series and raise `fork.json` `rev`. A patch upstream removes from a series is not reported, since the
+   fork's own patches are missing upstream as well.
 
 A pack built from a bleeding-edge tag exists before Steam ships the next Proton Experimental;
 the guest picks it only by an exact match, that is when the shipped build has the same ntdll.so

@@ -317,16 +317,21 @@ class ForkUpstreamTest(unittest.TestCase):
     def test_drift_is_reported(self):
         flavors = discover.load_flavors(ESYNC / "flavors.json")
         fork = discover.load_fork(ESYNC / "fork.json", flavors)
-        theirs = {"flavors": {"valve": {"rev": 2}, "ge": {"rev": 2}, "cachyos": {"rev": 2}}}
+        theirs = {"flavors": {name: {"rev": 2, "series": flavors["flavors"][name]["series"]} for name in ("valve", "ge", "cachyos")}}
         prefix = "repos/Droid-Deck/DroidDeck-Components/contents/droiddeck-esync/"
         # the patches upstream has too; the fork's own ones are not there
-        shared = ("0001-droiddeck-esync.patch", "0002-directory-users-ace.patch")
+        shared = ["0001-droiddeck-esync.patch", "0002-directory-users-ace.patch"]
+        listings = {name: [*shared, "README.md"] for name in ("valve-11", "ge-11", "cachyos-11")}
         asked = []
 
         def run(command, changed=False):
             path = command[-1].split("?")[0]
             if path == prefix + "flavors.json":
                 return completed(command, stdout=json.dumps(theirs))
+            series = path[len(prefix + "patches/"):]
+            if path.startswith(prefix + "patches/") and series in listings:
+                return completed(command, stdout=json.dumps(
+                    [{"name": name, "type": "file"} for name in listings[series]] + [{"name": "old.patch", "type": "dir"}]))
             if path.startswith(prefix + "patches/"):
                 asked.append(path[len(prefix):])
                 if path.rsplit("/", 1)[1] in shared:
@@ -336,14 +341,40 @@ class ForkUpstreamTest(unittest.TestCase):
 
         with mock.patch.object(discover.subprocess, "run", side_effect=lambda command, **kwargs: run(command)):
             self.assertEqual(discover.fork_upstream(flavors, fork), [])
-        self.assertEqual({path.split("/")[1] for path in asked}, {"valve-11", "ge-11", "cachyos-11"})
-        self.assertIn("patches/ge-11/0002-directory-users-ace.patch", asked)
+        self.assertEqual(sorted(asked), sorted(f"patches/{series}/{name}" for series in listings for name in shared))
         theirs["flavors"]["valve"]["rev"] = 3
         with mock.patch.object(discover.subprocess, "run", side_effect=lambda command, **kwargs: run(command, True)):
             notes = discover.fork_upstream(flavors, fork)
         self.assertEqual(len(notes), 2)
         self.assertIn("upstream valve packs are at rev 3, not 2", notes[0])
         self.assertIn("upstream changed patches/valve-11/0001-droiddeck-esync.patch", notes[1])
+
+    def test_series_switch_and_new_patch_without_a_rev_bump_are_reported(self):
+        # upstream cf6e67c moved ge from valve-11 to ge-11 and left rev at 1
+        flavors = discover.load_flavors(ESYNC / "flavors.json")
+        fork = discover.load_fork(ESYNC / "fork.json", flavors)
+        theirs = {"flavors": {name: {"rev": 2, "series": flavors["flavors"][name]["series"]} for name in ("valve", "ge", "cachyos")}}
+        theirs["flavors"]["ge"]["series"] = "ge-12"
+        prefix = "repos/Droid-Deck/DroidDeck-Components/contents/droiddeck-esync/"
+        shared = ["0001-droiddeck-esync.patch", "0002-directory-users-ace.patch"]
+        listings = {"valve-11": [*shared, "0003-new-upstream.patch"], "ge-11": shared}
+
+        def run(command):
+            path = command[-1].split("?")[0]
+            if path == prefix + "flavors.json":
+                return completed(command, stdout=json.dumps(theirs))
+            series = path[len(prefix + "patches/"):]
+            if series in listings:
+                return completed(command, stdout=json.dumps([{"name": name, "type": "file"} for name in listings[series]]))
+            if path.startswith(prefix + "patches/") and path.rsplit("/", 1)[1] in shared:
+                return completed(command, stdout=(ESYNC / path[len(prefix):]).read_text())
+            return completed(command, 1, stderr="gh: Not Found (HTTP 404)")
+
+        with mock.patch.object(discover.subprocess, "run", side_effect=lambda command, **kwargs: run(command)):
+            notes = discover.fork_upstream(flavors, fork)
+        self.assertEqual(notes, [
+            "upstream ge packs use the ge-12 series, the fork's ge-11: carry the series into the fork and raise fork.json rev",
+            "upstream added patches/valve-11/0003-new-upstream.patch: carry it into the fork's series and raise fork.json rev"])
 
 
 class ForkSeriesTest(unittest.TestCase):

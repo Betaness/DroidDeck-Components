@@ -921,11 +921,28 @@ def fork_upstream(flavors: dict, fork: dict) -> list[str]:
         if now != rev:
             notes.append(f"upstream {name} packs are at rev {now}, not {rev}: see what changed, carry it into the fork's patch series "
                          f"and raise fork.json rev to rebuild (then set upstream.rev.{name} to {now})")
+    # upstream can switch a flavor to another series or add a patch without raising rev (cf6e67c)
+    for name in sorted(fork["flavors"]):
+        series = theirs.get(name, {}).get("series") if isinstance(theirs.get(name), dict) else None
+        if isinstance(series, str) and series != flavors["flavors"][name]["series"]:
+            notes.append(f"upstream {name} packs use the {series} series, the fork's {flavors['flavors'][name]['series']}: "
+                         f"carry the series into the fork and raise fork.json rev")
     for series in sorted({flavors["flavors"][name]["series"] for name in fork["flavors"]}):
-        for path in sorted((PATCHES / series).glob("*.patch")):
-            text = raw_file(upstream["repo"], f"droiddeck-esync/patches/{series}/{path.name}", upstream["ref"])
-            if text is not None and text.encode() != path.read_bytes():
-                notes.append(f"upstream changed patches/{series}/{path.name}: carry the change into the fork's series and raise fork.json rev")
+        listing = gh_api(f"repos/{upstream['repo']}/contents/droiddeck-esync/patches/{series}?ref={quote(upstream['ref'])}", missing_ok=True)
+        if listing is None:
+            continue
+        if not isinstance(listing, list):
+            raise PackError(f"{upstream['repo']}: droiddeck-esync/patches/{series} is not a directory")
+        theirs_patches = {item["name"] for item in listing if isinstance(item, dict) and item.get("type") == "file"
+                          and isinstance(item.get("name"), str) and item["name"].endswith(".patch")}
+        ours = {path.name: path for path in (PATCHES / series).glob("*.patch")}
+        for patch in sorted(theirs_patches):
+            if patch not in ours:
+                notes.append(f"upstream added patches/{series}/{patch}: carry it into the fork's series and raise fork.json rev")
+                continue
+            text = raw_file(upstream["repo"], f"droiddeck-esync/patches/{series}/{patch}", upstream["ref"])
+            if text is not None and text.encode() != ours[patch].read_bytes():
+                notes.append(f"upstream changed patches/{series}/{patch}: carry the change into the fork's series and raise fork.json rev")
     return notes
 
 
