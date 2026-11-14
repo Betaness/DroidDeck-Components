@@ -1,7 +1,7 @@
 {
  "format": 1,
  "repo": "Betaness/DroidDeck-Components",
- "rev": 101,
+ "rev": 102,
  "flavors": [
   "cachyos",
   "ge",
@@ -22,9 +22,9 @@
   "ref": "main",
   "index_release": "droiddeck-esync-index",
   "rev": {
-   "cachyos": 1,
-   "ge": 1,
-   "valve": 1
+   "cachyos": 2,
+   "ge": 2,
+   "valve": 2
   }
  },
  "adopt": {

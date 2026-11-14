@@ -52,8 +52,8 @@ reads, writes and polls its eventfds with raw system calls, so no `LD_PRELOAD` w
 `read`/`write`/`poll` (the guest preloads several) sits in the sync path or in the unwind of a
 thread Wine kills.
 
-`0002-droiddeck-semaphore-pool.patch` (valve-11 series, which GE builds use too, and the same change
-in cachyos-11) adds droiddeck-sempool to the unix side of ntdll, for every sync backend. Unity's
+`0002-droiddeck-semaphore-pool.patch` (the same change in every series of the fork) adds
+droiddeck-sempool to the unix side of ntdll, for every sync backend. Unity's
 Mono runtime creates an anonymous semaphore and closes it
 again thousands of times a second without touching it in between, two wineserver round trips each
 time. A semaphore created with no name, root directory or security descriptor and no attributes but
@@ -75,7 +75,7 @@ new semaphore. Checking the object's handle count before pooling would take a se
 and cancel the gain, so this is left alone; a program that hands anonymous semaphores to a broker
 or parent process this way needs `WINE_SEM_POOL=0`.
 
-`0003-droiddeck-alert-spin.patch` (valve-11 series only, on the `alert-spin` branch of the fork) changes the Linux
+`0003-droiddeck-alert-spin.patch` (the same change in every series of the fork) changes the Linux
 futex path of `NtWaitForAlertByThreadId` and `NtAlertThreadByThreadId` in the unix side of ntdll, which
 `RtlWaitOnAddress`, `RtlWakeAddressSingle` and everything built on them (critical sections, SRW locks, condition
 variables, `WaitOnAddress`) use. The thread's futex word gets a third state: 0 no alert pending, 1 alert pending,
@@ -90,8 +90,9 @@ before it sleeps (`isb` between polls, the counter `CNTVCT_EL0` read every 32 po
 elsewhere). Waits with a zero or absolute timeout, or a relative one shorter than the polling time, do not poll; the
 polling time counts against the timeout. ntdll prints `droiddeck-alertspin: <n> us.` once per process when polling
 is on. esync, fsync and ntsync waits do not use this path. `tests/test_alertspin.py` cuts the protocol block out
-of the patch and runs it on the host with real futexes (`droiddeck-esync/tests/alertspin.c`: ping-pong, three
-alerters on one waiter, timeouts, alerts racing timeouts; also under ThreadSanitizer when clang can run it).
+of the valve-11 patch (the copies in the other series must add and remove the same lines) and runs it on the host
+with real futexes (`droiddeck-esync/tests/alertspin.c`: ping-pong, three alerters on one waiter, timeouts, alerts
+racing timeouts; also under ThreadSanitizer when clang can run it).
 
 The patch changes no wineserver request: `make_pack.py` refuses a build whose
 `server_protocol.h`, `request_handlers.h` or `request_trace.h` differ from the unpatched
@@ -142,6 +143,19 @@ ever grants BUILTIN\Users anything. Steam's legacy DRM helper (`legacycompat/ste
 under `C:\windows` until one grants Users read access, 500 tries per directory, and under FEX it
 runs past Steam's timeout before giving up. The patch adds a read and execute ACE for Users to
 directories the owner can read, as Windows has on its own system folders.
+
+In this fork every series also carries `0002-droiddeck-semaphore-pool.patch` and
+`0003-droiddeck-alert-spin.patch` (only `dlls/ntdll/unix`). Patches apply in file name order, so
+upstream's `0002-directory-users-ace.patch` comes before `0002-droiddeck-semaphore-pool.patch`. The
+`ge-11` copies of both were made on GE-Proton11-12 and the `cachyos-11` copy of `0003` on
+cachyos-11.0-20261015-slr, after the patches before them; they add and remove the same lines as the
+`valve-11` ones, at other line numbers. Each series applies with `--fuzz=0` to the wine source of
+the fork's builds at rev 102 (Valve experimental-11.0-20261105c, 20261112 and the bleeding-edge tag
+of 2026-11-14, proton-11.0-2c and 2e; GE-Proton11-12 after `protonprep-valve-staging.sh`;
+cachyos-11.0-20261005, 20261014 and 20261015-slr). `ge-11` does not apply to GE-Proton11-10 and
+GE-Proton11-11 (wine c53678ab; on GE-Proton11-11 4 hunks of `0001` in `dlls/ntdll/unix/sync.c`, 2
+in `server/inproc_sync.c` and 1 in `server/object.h` fail), so rev 102 makes no packs for them;
+their fork packs stay at rev 2 (`valve-11` without `0002-directory-users-ace.patch`).
 
 ## Building and publishing
 
@@ -204,10 +218,10 @@ then `make_pack.py`. `make_pack.py` reads the guest script from a DroidDeck chec
 
 ## Fork packs
 
-A fork that carries its own patch series (here the semaphore pool, `0002`) builds its own packs
-without the upstream index or signing key. `.github/workflows/fork-sempool-watch.yml` on the fork's
-`main` runs every hour and calls `.github/workflows/fork-sempool-packs.yml` on this branch, which
-reads `fork.json`:
+A fork that carries its own patch series (here `0002-droiddeck-semaphore-pool.patch` and
+`0003-droiddeck-alert-spin.patch`) builds its own packs without the upstream index or signing key.
+`.github/workflows/fork-sempool-watch.yml` on the fork's `main` runs every hour and calls
+`.github/workflows/fork-sempool-packs.yml` on this branch, which reads `fork.json`:
 
 1. `discover.py fork-fetch` reads the `<id>.json` entries of every fork release whose tag starts
    with `release_prefix`, plus the `.failed` markers of the last day in `state_release`.
@@ -218,8 +232,10 @@ reads `fork.json`:
    older packs under the same release prefix, like the r3 winex11 cache experiment, do not.
    Raising `rev` therefore rebuilds every build. A bleeding-edge tag is also dropped when a
    counted fork pack exists for the same wine commit and SDK image. Every new pack gets
-   `fork.json` `rev` (100), above any upstream rev, so a fork pack never shares an id with an
-   upstream one and wins over upstream's pack of the same build in the guest.
+   `fork.json` `rev` (102; 100 and 101 before), above any upstream rev, so a fork pack never shares
+   an id with an upstream one and wins over upstream's pack of the same build in the guest. The packs
+   adopted at rev 2 have the same ids as upstream's rev 2 packs of the same builds (other contents);
+   the app installs whichever of the two it gets first.
 2. The build job is the one above (the shared steps must stay identical; the tests check it), plus
    an anonymous Steam depot fetch (the bleeding-edge tag reads the `bleeding-edge` branch) and a
    stock check after `make_pack.py`: upstream's pack of the same build, which devices have matched
@@ -243,7 +259,7 @@ reads `fork.json`:
 A pack built from a bleeding-edge tag exists before Steam ships the next Proton Experimental;
 the guest picks it only by an exact match, that is when the shipped build has the same ntdll.so
 and wineserver. Manual runs: Actions -> Fork semaphore-pool watch (on `main`) -> one tag; its `code_ref` input
-builds from another branch of the fork (patch series, `fork.json` and scripts of that branch), as for `alert-spin`.
+builds from another branch of the fork (patch series, `fork.json` and scripts of that branch).
 
 ## Setup
 

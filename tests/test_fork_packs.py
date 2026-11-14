@@ -306,7 +306,7 @@ class ForkNotesTest(unittest.TestCase):
         self.assertEqual(lines, [
             f"Fork/DroidDeck-Components\tdroiddeck-sempool-x-r100\t{entry['id']}.tzst\t{sha256(payload)}",
             f"Fork/DroidDeck-Components\tdroiddeck-sempool-x-r100\t{entry['id']}.json\t{sha256((tmp / (entry['id'] + '.json')).read_bytes())}"])
-        self.assertIn("`0001-droiddeck-esync.patch`, `0002-droiddeck-semaphore-pool.patch`", text)
+        self.assertIn("`0001-droiddeck-esync.patch`, `0002-directory-users-ace.patch`, `0002-droiddeck-semaphore-pool.patch`", text)
         self.assertIn("- Stock check: none at hand\n  - detail\n", text)
         self.assertIn("bleeding-edge tag before Steam ships it", text)
         self.assertIn("run 7", text)
@@ -317,25 +317,54 @@ class ForkUpstreamTest(unittest.TestCase):
     def test_drift_is_reported(self):
         flavors = discover.load_flavors(ESYNC / "flavors.json")
         fork = discover.load_fork(ESYNC / "fork.json", flavors)
-        theirs = {"flavors": {"valve": {"rev": 1}, "ge": {"rev": 1}, "cachyos": {"rev": 1}}}
-        ours = (ESYNC / "patches/valve-11/0001-droiddeck-esync.patch").read_text()
+        theirs = {"flavors": {"valve": {"rev": 2}, "ge": {"rev": 2}, "cachyos": {"rev": 2}}}
+        prefix = "repos/Droid-Deck/DroidDeck-Components/contents/droiddeck-esync/"
+        # the patches upstream has too; the fork's own ones are not there
+        shared = ("0001-droiddeck-esync.patch", "0002-directory-users-ace.patch")
+        asked = []
 
         def run(command, changed=False):
-            path = command[-1]
-            if path.startswith("repos/Droid-Deck/DroidDeck-Components/contents/droiddeck-esync/flavors.json"):
+            path = command[-1].split("?")[0]
+            if path == prefix + "flavors.json":
                 return completed(command, stdout=json.dumps(theirs))
-            if "/0001-droiddeck-esync.patch" in path:
-                return completed(command, stdout=ours + ("x" if changed and "valve-11" in path else ""))
+            if path.startswith(prefix + "patches/"):
+                asked.append(path[len(prefix):])
+                if path.rsplit("/", 1)[1] in shared:
+                    text = (ESYNC / path[len(prefix):]).read_text()
+                    return completed(command, stdout=text + ("x" if changed and path.endswith("valve-11/0001-droiddeck-esync.patch") else ""))
             return completed(command, 1, stderr="gh: Not Found (HTTP 404)")
 
         with mock.patch.object(discover.subprocess, "run", side_effect=lambda command, **kwargs: run(command)):
             self.assertEqual(discover.fork_upstream(flavors, fork), [])
-        theirs["flavors"]["valve"]["rev"] = 2
+        self.assertEqual({path.split("/")[1] for path in asked}, {"valve-11", "ge-11", "cachyos-11"})
+        self.assertIn("patches/ge-11/0002-directory-users-ace.patch", asked)
+        theirs["flavors"]["valve"]["rev"] = 3
         with mock.patch.object(discover.subprocess, "run", side_effect=lambda command, **kwargs: run(command, True)):
             notes = discover.fork_upstream(flavors, fork)
         self.assertEqual(len(notes), 2)
-        self.assertIn("upstream valve packs are at rev 2, not 1", notes[0])
+        self.assertIn("upstream valve packs are at rev 3, not 2", notes[0])
         self.assertIn("upstream changed patches/valve-11/0001-droiddeck-esync.patch", notes[1])
+
+
+class ForkSeriesTest(unittest.TestCase):
+    def test_every_fork_series_carries_the_shared_and_the_fork_patches(self):
+        flavors = discover.load_flavors(ESYNC / "flavors.json")
+        fork = discover.load_fork(ESYNC / "fork.json", flavors)
+        series = sorted({flavors["flavors"][name]["series"] for name in fork["flavors"]})
+        self.assertEqual(series, ["cachyos-11", "ge-11", "valve-11"])
+
+        def changed(path):
+            return [line for line in path.read_text().splitlines() if line.startswith(("diff --git ", "+", "-"))]
+
+        patches = ESYNC / "patches"
+        for name in series:
+            self.assertEqual([path.name for path in sorted((patches / name).glob("*.patch"))],
+                             ["0001-droiddeck-esync.patch", "0002-directory-users-ace.patch",
+                              "0002-droiddeck-semaphore-pool.patch", "0003-droiddeck-alert-spin.patch"], name)
+            self.assertEqual((patches / name / "0002-directory-users-ace.patch").read_bytes(),
+                             (patches / "valve-11/0002-directory-users-ace.patch").read_bytes(), name)
+            self.assertEqual(changed(patches / name / "0002-droiddeck-semaphore-pool.patch"),
+                             changed(patches / "valve-11/0002-droiddeck-semaphore-pool.patch"), name)
 
 
 class ForkWorkflowTest(unittest.TestCase):

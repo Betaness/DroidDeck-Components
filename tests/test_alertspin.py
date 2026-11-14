@@ -50,6 +50,20 @@ def protocol_block(patch: Path) -> str:
     return "\n".join(block) + "\n"
 
 
+def changed_lines(patch: Path) -> list[str]:
+    """The file headers and the lines a patch adds or removes, without line numbers and blob ids."""
+    return [line for line in patch.read_text().splitlines() if line.startswith(("diff --git ", "+", "-"))]
+
+
+class AlertSpinSeriesTest(unittest.TestCase):
+    def test_every_series_has_the_same_change(self):
+        ours = alert_patch()
+        for series in sorted(path for path in SERIES.parent.iterdir() if path.is_dir()):
+            found = [path for path in sorted(series.glob("*.patch")) if "static NTSTATUS tid_alert_wait(" in path.read_text()]
+            self.assertEqual([path.name for path in found], [ours.name], series.name)
+            self.assertEqual(changed_lines(found[0]), changed_lines(ours), series.name)
+
+
 def compiler(name: str) -> str | None:
     path = shutil.which(name)
     return path
