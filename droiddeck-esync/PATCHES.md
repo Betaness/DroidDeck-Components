@@ -75,6 +75,24 @@ new semaphore. Checking the object's handle count before pooling would take a se
 and cancel the gain, so this is left alone; a program that hands anonymous semaphores to a broker
 or parent process this way needs `WINE_SEM_POOL=0`.
 
+`0003-droiddeck-alert-spin.patch` (valve-11 series only, on the `alert-spin` branch of the fork) changes the Linux
+futex path of `NtWaitForAlertByThreadId` and `NtAlertThreadByThreadId` in the unix side of ntdll, which
+`RtlWaitOnAddress`, `RtlWakeAddressSingle` and everything built on them (critical sections, SRW locks, condition
+variables, `WaitOnAddress`) use. The thread's futex word gets a third state: 0 no alert pending, 1 alert pending,
+2 the thread sleeps (or is about to sleep) in `futex_wait`. Only the waiting thread stores 0 and 2; an alert swaps in
+1 and calls `futex_wake` only when it replaced 2, so an alert that finds the thread awake makes no system call on
+either side. All changes are sequentially consistent read-modify-writes and the kernel compares the word with 2
+before it sleeps, so an alert between the switch to 2 and `futex_wait` makes the wait return at once. A timeout
+returns `STATUS_TIMEOUT` and leaves an alert that came in after it pending, as before; the
+`WINE_ALERT_SIMULATE_SCHED_QUANTUM` hack behaves as before. `WINE_ALERT_SPIN_US` (read once when ntdll.so is loaded;
+0 to 1000, default 0 = no polling) makes a wait without a pending alert poll the word for that many microseconds
+before it sleeps (`isb` between polls, the counter `CNTVCT_EL0` read every 32 polls; `pause` and the monotonic clock
+elsewhere). Waits with a zero or absolute timeout, or a relative one shorter than the polling time, do not poll; the
+polling time counts against the timeout. ntdll prints `droiddeck-alertspin: <n> us.` once per process when polling
+is on. esync, fsync and ntsync waits do not use this path. `tests/test_alertspin.py` cuts the protocol block out
+of the patch and runs it on the host with real futexes (`droiddeck-esync/tests/alertspin.c`: ping-pong, three
+alerters on one waiter, timeouts, alerts racing timeouts; also under ThreadSanitizer when clang can run it).
+
 The patch changes no wineserver request: `make_pack.py` refuses a build whose
 `server_protocol.h`, `request_handlers.h` or `request_trace.h` differ from the unpatched
 control build, or whose ntdll.so exports other symbols. Only `files/lib/wine/aarch64-unix/ntdll.so`
@@ -205,7 +223,8 @@ reads `fork.json`:
 
 A pack built from a bleeding-edge tag exists before Steam ships the next Proton Experimental;
 the guest picks it only by an exact match, that is when the shipped build has the same ntdll.so
-and wineserver. Manual runs: Actions -> Fork semaphore-pool watch (on `main`) -> one tag.
+and wineserver. Manual runs: Actions -> Fork semaphore-pool watch (on `main`) -> one tag; its `code_ref` input
+builds from another branch of the fork (patch series, `fork.json` and scripts of that branch), as for `alert-spin`.
 
 ## Setup
 

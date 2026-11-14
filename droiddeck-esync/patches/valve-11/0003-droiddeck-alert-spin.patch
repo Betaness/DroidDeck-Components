@@ -1,0 +1,244 @@
+diff --git a/dlls/ntdll/unix/sync.c b/dlls/ntdll/unix/sync.c
+index 789bab7..c429ca5 100644
+--- a/dlls/ntdll/unix/sync.c
++++ b/dlls/ntdll/unix/sync.c
+@@ -3819,6 +3819,171 @@ static union tid_alert_entry *get_tid_alert_entry( HANDLE tid )
+ }
+ 
+ 
++#ifdef USE_FUTEX
++
++/* droiddeck-alertspin: the futex word of a thread-id alert entry holds
++ *   TID_ALERT_IDLE      no alert pending, and the thread is not asleep on the word;
++ *   TID_ALERT_SIGNALED  an alert is pending;
++ *   TID_ALERT_SLEEPING  the thread sleeps, or is about to sleep, in futex_wait.
++ * Only the thread itself stores IDLE and SLEEPING; NtAlertThreadByThreadId swaps in SIGNALED and
++ * calls futex_wake only when it replaced SLEEPING. Every change is a sequentially consistent
++ * read-modify-write, and the kernel compares the word with SLEEPING before it puts the thread to
++ * sleep, so an alert that lands between the switch to SLEEPING and futex_wait makes futex_wait
++ * return at once and no alert is lost. An alert that finds the thread awake (polling, or not
++ * waiting at all) costs no system call on either side; a wait leaves the word IDLE or SIGNALED.
++ *
++ * WINE_ALERT_SPIN_US, read once when ntdll.so is loaded (0 to 1000, default 0: no polling), lets
++ * NtWaitForAlertByThreadId poll the word for that many microseconds before it sleeps. A wait with
++ * an absolute timeout, or a relative one shorter than that, sleeps at once; the time spent polling
++ * counts against the timeout. */
++
++#define TID_ALERT_IDLE       0
++#define TID_ALERT_SIGNALED   1
++#define TID_ALERT_SLEEPING   2
++#define TID_ALERT_SPIN_MAX   1000  /* microseconds */
++#define TID_ALERT_SPIN_CHECK 32    /* polls between two clock reads */
++
++static LONGLONG get_absolute_timeout( const LARGE_INTEGER *timeout );
++static LONGLONG update_timeout( ULONGLONG end );
++
++static ULONGLONG alert_spin_ticks;  /* in alert_spin_clock() units, 0 = no polling */
++static LONGLONG alert_spin_time;    /* the same in 100 ns units */
++
++#ifdef __aarch64__
++static inline ULONGLONG alert_spin_clock(void)
++{
++    ULONGLONG value;
++    __asm__ __volatile__( "mrs %0, cntvct_el0" : "=r" (value) );
++    return value;
++}
++
++static inline ULONGLONG alert_spin_frequency(void)
++{
++    ULONGLONG value;
++    __asm__ __volatile__( "mrs %0, cntfrq_el0" : "=r" (value) );
++    return value;
++}
++
++static inline void alert_spin_pause(void)
++{
++    __asm__ __volatile__( "isb" ::: "memory" );
++}
++#else
++static inline ULONGLONG alert_spin_clock(void)
++{
++    return monotonic_counter();
++}
++
++static inline ULONGLONG alert_spin_frequency(void)
++{
++    return TICKSPERSEC;
++}
++
++static inline void alert_spin_pause(void)
++{
++#if defined(__i386__) || defined(__x86_64__)
++    __asm__ __volatile__( "pause" ::: "memory" );
++#else
++    __asm__ __volatile__( "" ::: "memory" );
++#endif
++}
++#endif
++
++static void __attribute__((constructor)) alert_spin_init(void)
++{
++    const char *env = getenv( "WINE_ALERT_SPIN_US" );
++    long us;
++
++    if (!env || (us = strtol( env, NULL, 10 )) <= 0) return;
++    if (us > TID_ALERT_SPIN_MAX) us = TID_ALERT_SPIN_MAX;
++    alert_spin_ticks = alert_spin_frequency() * us / 1000000;
++    if (!alert_spin_ticks) return;
++    alert_spin_time = us * 10;
++    fprintf( stderr, "droiddeck-alertspin: %ld us.\n", us );
++}
++
++static void tid_alert_wake( LONG *futex )
++{
++    if (InterlockedExchange( futex, TID_ALERT_SIGNALED ) == TID_ALERT_SLEEPING)
++        futex_wake_one( futex );
++}
++
++/* poll for up to alert_spin_ticks; TRUE when an alert came in, which is then consumed */
++static BOOL tid_alert_spin( LONG *futex )
++{
++    ULONGLONG start = alert_spin_clock();
++    unsigned int i;
++
++    for (;;)
++    {
++        for (i = 0; i < TID_ALERT_SPIN_CHECK; i++)
++        {
++            if (__atomic_load_n( futex, __ATOMIC_RELAXED ) == TID_ALERT_SIGNALED)
++            {
++                InterlockedExchange( futex, TID_ALERT_IDLE );
++                return TRUE;
++            }
++            alert_spin_pause();
++        }
++        if (alert_spin_clock() - start >= alert_spin_ticks) return FALSE;
++    }
++}
++
++static NTSTATUS tid_alert_wait( LONG *futex, const LARGE_INTEGER *timeout )
++{
++    ULONGLONG end = 0;
++    BOOL waited;
++    int ret;
++
++    if (timeout)
++    {
++        if (timeout->QuadPart == TIMEOUT_INFINITE)
++            timeout = NULL;
++        else
++            end = get_absolute_timeout( timeout );
++    }
++
++    if (InterlockedExchange( futex, TID_ALERT_IDLE ) == TID_ALERT_SIGNALED) return STATUS_ALERTED;
++
++    /* no alert was pending: this wait blocks, unless it has a zero timeout */
++    waited = !timeout || timeout->QuadPart;
++
++    if (!alert_spin_ticks || (timeout && timeout->QuadPart > -alert_spin_time) || !tid_alert_spin( futex ))
++    {
++        while (InterlockedCompareExchange( futex, TID_ALERT_SLEEPING, TID_ALERT_IDLE ) != TID_ALERT_SIGNALED)
++        {
++            /* the word is SLEEPING now: switched from IDLE, or left so by a wakeup without an alert */
++            if (timeout)
++            {
++                LONGLONG timeleft = update_timeout( end );
++                struct timespec timespec;
++
++                timespec.tv_sec = timeleft / (ULONGLONG)TICKSPERSEC;
++                timespec.tv_nsec = (timeleft % TICKSPERSEC) * 100;
++                ret = futex_wait( futex, TID_ALERT_SLEEPING, &timespec );
++            }
++            else
++                ret = futex_wait( futex, TID_ALERT_SLEEPING, NULL );
++
++            if (ret == -1 && errno == ETIMEDOUT)
++            {
++                /* back to IDLE; an alert that came in after the timeout stays pending */
++                InterlockedCompareExchange( futex, TID_ALERT_IDLE, TID_ALERT_SLEEPING );
++                return STATUS_TIMEOUT;
++            }
++        }
++        InterlockedExchange( futex, TID_ALERT_IDLE );
++    }
++
++    if (alert_simulate_sched_quantum && waited)
++        usleep(0);
++
++    return STATUS_ALERTED;
++}
++
++#endif /* USE_FUTEX */
++
++
+ /***********************************************************************
+  *             NtAlertMultipleThreadByThreadId (NTDLL.@)
+  */
+@@ -3850,12 +4015,8 @@ NTSTATUS WINAPI NtAlertThreadByThreadId( HANDLE tid )
+     if (!entry) return STATUS_INVALID_CID;
+ 
+ #ifdef USE_FUTEX
+-    {
+-        LONG *futex = &entry->futex;
+-        if (!InterlockedExchange( futex, 1 ))
+-            futex_wake_one( futex );
+-        return STATUS_SUCCESS;
+-    }
++    tid_alert_wake( &entry->futex );
++    return STATUS_SUCCESS;
+ #elif defined(HAVE_KQUEUE)
+     {
+         static const struct kevent signal_event =
+@@ -3906,51 +4067,13 @@ static LONGLONG update_timeout( ULONGLONG end )
+ NTSTATUS WINAPI NtWaitForAlertByThreadId( const void *address, const LARGE_INTEGER *timeout )
+ {
+     union tid_alert_entry *entry = get_tid_alert_entry( NtCurrentTeb()->ClientId.UniqueThread );
+-    BOOL waited = FALSE;
+ 
+     TRACE( "%p %s\n", address, debugstr_timeout( timeout ) );
+ 
+     if (!entry) return STATUS_INVALID_CID;
+ 
+ #ifdef USE_FUTEX
+-    {
+-        LONG *futex = &entry->futex;
+-        ULONGLONG end;
+-        int ret;
+-
+-        if (timeout)
+-        {
+-            if (timeout->QuadPart == TIMEOUT_INFINITE)
+-                timeout = NULL;
+-            else
+-                end = get_absolute_timeout( timeout );
+-        }
+-
+-        while (!InterlockedExchange( futex, 0 ))
+-        {
+-            if (timeout)
+-            {
+-                LONGLONG timeleft = update_timeout( end );
+-                struct timespec timespec;
+-
+-                timespec.tv_sec = timeleft / (ULONGLONG)TICKSPERSEC;
+-                timespec.tv_nsec = (timeleft % TICKSPERSEC) * 100;
+-                ret = futex_wait( futex, 0, &timespec );
+-            }
+-            else
+-                ret = futex_wait( futex, 0, NULL );
+-
+-            if (!timeout || timeout->QuadPart)
+-                waited = TRUE;
+-
+-            if (ret == -1 && errno == ETIMEDOUT) return STATUS_TIMEOUT;
+-        }
+-
+-        if (alert_simulate_sched_quantum && waited)
+-            usleep(0);
+-
+-        return STATUS_ALERTED;
+-    }
++    return tid_alert_wait( &entry->futex, timeout );
+ #elif defined(HAVE_KQUEUE)
+     {
+         ULONGLONG end;
